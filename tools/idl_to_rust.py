@@ -11,14 +11,14 @@ def generate(text):
     if not match:
         raise ValueError("IDL fuera del subconjunto soportado: module + @topic struct")
     module, name, body = match.groups()
-    mapping = {"unsigned long": "u32", "unsigned long long": "u64",
+    mapping = {"string": "String", "unsigned long": "u32", "unsigned long long": "u64",
                "long": "i32", "double": "f64", "boolean": "bool"}
     fields = []
     names = set()
     for field in body.split(";"):
         if not field.strip():
             continue
-        m = re.fullmatch(r"\s*(unsigned\s+long\s+long|unsigned\s+long|long|double|boolean)\s+([A-Za-z_][A-Za-z_0-9]*)\s*", field)
+        m = re.fullmatch(r"\s*(string|unsigned\s+long\s+long|unsigned\s+long|long|double|boolean)\s+([A-Za-z_][A-Za-z_0-9]*)\s*", field)
         if not m:
             raise ValueError("Campo IDL no soportado: " + field.strip())
         kind, field_name = m.groups()

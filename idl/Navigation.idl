@@ -1,6 +1,7 @@
 module Marine {
   @topic
   struct Navigation {
+    string raw_nmea;
     unsigned long sequence;
     unsigned long long timestamp_ms;
     double latitude_deg;

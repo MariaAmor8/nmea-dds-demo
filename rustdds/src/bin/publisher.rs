@@ -46,8 +46,13 @@ fn main() {
                 match result {
                     Ok(sample) => match writer.write(sample.clone(), None) {
                         Ok(()) => println!(
-                            "PUBLICADO seq={} speed={:.1} lat={:.5}",
-                            sample.sequence, sample.speed_knots, sample.latitude_deg
+                            "RECIBIDO DEL SIMULADOR: {}\nPUBLICADO DDS: seq={} speed={:.1} lat={:.5} lon={:.5} course={:.1}",
+                            sample.raw_nmea,
+                            sample.sequence,
+                            sample.speed_knots,
+                            sample.latitude_deg,
+                            sample.longitude_deg,
+                            sample.course_deg
                         ),
                         Err(e) => eprintln!("Error al publicar: {e:?}"),
                     },
@@ -59,8 +64,12 @@ fn main() {
             let sample = sequential(n);
             match writer.write(sample.clone(), None) {
                 Ok(()) => println!(
-                    "PUBLICADO seq={} speed={:.1} lat={:.5}",
-                    n, sample.speed_knots, sample.latitude_deg
+                    "PUBLICADO DDS: seq={} speed={:.1} lat={:.5} lon={:.5} course={:.1}",
+                    n,
+                    sample.speed_knots,
+                    sample.latitude_deg,
+                    sample.longitude_deg,
+                    sample.course_deg
                 ),
                 Err(e) => eprintln!("Error al publicar: {e:?}"),
             }

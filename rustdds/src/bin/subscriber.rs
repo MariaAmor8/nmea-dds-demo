@@ -34,8 +34,8 @@ fn main() {
                         }
                     }
                     previous = Some(v.sequence);
-                    println!("RECIBIDO seq={} lat={:.5} lon={:.5} speed={:.1} kn course={:.1} heading={} depth={} position_valid={} simulated={}",
-                        v.sequence, v.latitude_deg, v.longitude_deg, v.speed_knots, v.course_deg,
+                    println!("RECIBIDO DDS: {}\nPARSEADO: seq={} lat={:.5} lon={:.5} speed={:.1} kn course={:.1} heading={} depth={} position_valid={} simulated={}",
+                        v.raw_nmea, v.sequence, v.latitude_deg, v.longitude_deg, v.speed_knots, v.course_deg,
                         if v.heading_valid { format!("{:.1}", v.heading_deg) } else { "N/D".to_string() },
                         if v.depth_valid { format!("{:.1} m", v.depth_m) } else { "N/D".to_string() },
                         v.position_valid, v.simulated);

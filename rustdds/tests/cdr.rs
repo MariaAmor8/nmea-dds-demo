@@ -15,6 +15,7 @@ fn idl_generated_navigation_survives_cdr_roundtrip() {
         )
         .unwrap();
         assert_eq!(a.sequence, b.sequence);
+        assert_eq!(a.raw_nmea, b.raw_nmea);
         assert_eq!(a.timestamp_ms, b.timestamp_ms);
         assert_eq!(a.latitude_deg, b.latitude_deg);
         assert_eq!(a.longitude_deg, b.longitude_deg);

@@ -151,6 +151,7 @@ pub fn sequential(n: u32) -> Navigation {
         .unwrap()
         .as_millis() as u64;
     Navigation {
+        raw_nmea: String::new(),
         sequence: n,
         timestamp_ms,
         latitude_deg: 10.0 + (n % 1000) as f64 * 0.00001,

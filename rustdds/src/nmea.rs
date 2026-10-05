@@ -18,6 +18,7 @@ pub enum ParseError {
 }
 
 pub fn parse_gprmc(line: &str, sequence: u32) -> Result<Navigation, ParseError> {
+    let raw_nmea = line.trim().to_string();
     let start = line.find("$GPRMC").ok_or(ParseError::NotGprmc)?;
     let sentence = line[start..].trim();
     let star = sentence.rfind('*').ok_or(ParseError::MissingChecksum)?;
@@ -54,6 +55,7 @@ pub fn parse_gprmc(line: &str, sequence: u32) -> Result<Navigation, ParseError> 
     let timestamp_ms = nmea_timestamp(fields[1], fields[9])?;
 
     Ok(Navigation {
+        raw_nmea,
         sequence,
         timestamp_ms,
         latitude_deg,
@@ -215,6 +217,7 @@ mod tests {
     #[test]
     fn parses_prefixed_gprmc() {
         let n = parse_gprmc(VALID, 7).unwrap();
+        assert_eq!(n.raw_nmea, VALID);
         assert_eq!(n.sequence, 7);
         assert!((n.latitude_deg + 0.0158468333).abs() < 1e-9);
         assert!((n.longitude_deg + 0.0049186667).abs() < 1e-9);

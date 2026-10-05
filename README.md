@@ -276,6 +276,11 @@ latitud y longitud a grados decimales, conserva velocidad en nudos y publica
 el rumbo sobre el suelo en `course_deg`. Las sentencias rechazadas se informan
 en la consola y no se publican.
 
+La muestra DDS conserva también la sentencia completa en `raw_nmea`. El
+publicador imprime la línea recibida del simulador antes de publicar y el
+suscriptor imprime esa misma línea al recibirla, además de un resumen de los
+campos parseados. Esto permite comparar directamente ambos extremos.
+
 GPRMC no contiene rumbo verdadero ni profundidad. Por ello `heading_valid` y
 `depth_valid` se publican como `false`, con valores numéricos `0.0`; el
 suscriptor los muestra como `N/D`. `position_valid` refleja el estado `A` o
