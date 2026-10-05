@@ -1,0 +1,17 @@
+module Marine {
+  @topic
+  struct Navigation {
+    unsigned long sequence;
+    unsigned long long timestamp_ms;
+    double latitude_deg;
+    double longitude_deg;
+    double speed_knots;
+    double course_deg;
+    double heading_deg;
+    double depth_m;
+    boolean position_valid;
+    boolean heading_valid;
+    boolean depth_valid;
+    boolean simulated;
+  };
+};
