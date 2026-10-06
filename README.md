@@ -1,11 +1,17 @@
-# NMEA DDS demo — etapa 1: RustDDS y datos secuenciales
+# NMEA DDS demo — RustDDS y OpenDDS
 
 ## Alcance y estado
 
-Un solo proyecto, un solo IDL. Publicador RustDDS de Atostek en WSL; suscriptor
-RustDDS en Ubuntu VMware. Datos sintéticos a 1 Hz, marcados simulated=true.
-La integración NMEA y la implementación OpenDDS están pendientes.
-La carpeta opendds/ reserva el lugar: no contiene todavía una implementación.
+Un solo proyecto, un solo IDL y dos implementaciones que se prueban por separado:
+
+- RustDDS de Atostek: publicador WSL -> suscriptor Ubuntu VMware.
+- OpenDDS 3.34.0: publicador Windows nativo/MSVC -> suscriptor Ubuntu VMware.
+
+Ambas ofrecen datos sintéticos a 1 Hz y entrada GPRMC por UDP. El contrato
+compartido es `idl/Navigation.idl`; no se exige interoperabilidad entre DDS.
+Para instalar, compilar y ejecutar OpenDDS, seguir [opendds/README.md](opendds/README.md).
+Las secciones 1–6 siguientes describen el flujo RustDDS existente.
+El estado de pruebas de OpenDDS está en [opendds/VALIDATION.md](opendds/VALIDATION.md).
 
 Validado al preparar esta entrega: ambos binarios compilan con Rust 1.99.0;
 la prueba de serialización/deserialización CDR de todos los campos pasa.
@@ -16,7 +22,7 @@ han validado en ejecución aquí. Deben comprobarse en las máquinas del usuario
 Se fija RustDDS 0.11.2, cuya API se inspeccionó; no es una afirmación de que sea
 la versión más reciente. Cargo.lock fija las dependencias. Ejecutar --locked.
 
-## Arquitectura
+## Arquitectura RustDDS
 
 WSL 192.168.10.15: generador secuencial -> DataWriter RustDDS.
 VM 192.168.10.33: DataReader RustDDS -> consola.
@@ -49,11 +55,11 @@ Es una solución auxiliar para este demo, no una recomendación de despliegue fi
 - rustdds/src/bin/publisher.rs: DataWriter.
 - rustdds/src/bin/subscriber.rs: DataReader y comprobación de secuencia.
 - tools/udp_probe.py: diagnóstico unicast con ACK, puerto 17400.
-- run.sh: selector de implementación y rol.
-- opendds/: etapa posterior; reutilizará el mismo IDL.
+- run.sh: selector de implementación y rol para Linux.
+- opendds/: publicador/suscriptor C++, CMake, fuentes, pruebas y lanzador Windows.
 
-El generador admite un module, un @topic struct sin clave y los tipos unsigned
-long, unsigned long long, long, double y boolean. Rechaza sintaxis distinta.
+El generador Rust admite un module, un @topic struct sin clave y los tipos unsigned
+long, unsigned long long, long, double, boolean y string. Rechaza sintaxis distinta.
 No es un compilador IDL general. Los tipos Rust se generan dentro de target/;
 no se mantienen manualmente en paralelo con el IDL.
 
@@ -238,18 +244,30 @@ user.name y user.email con los datos del usuario. En la MV se podrá clonar ese 
 repositorio y usar git pull para las siguientes etapas. No crear otro repositorio
 para OpenDDS.
 
-## 7. Siguiente etapa
+## 7. Demo OpenDDS
 
-1. Añadir OpenDDS publisher/subscriber al mismo repo, generados desde
-   idl/Navigation.idl. Primero transmitir las mismas muestras sintéticas.
-2. Ampliar run.sh para seleccionar opendds además de rustdds.
-3. Conectar la fuente NMEA Windows -> WSL por UDP 127.0.0.1:3100.
-4. Sustituir sequential() por una fuente que valide checksum, estado GPS,
-   grados/minutos y unidades. Diferenciar course over ground de heading true.
-   Añadir indicadores de validez/antigüedad para datos opcionales como profundidad
-   antes de publicar entradas reales. simulated=false solo para esa fuente.
-5. Mantener el contrato IDL y los tópicos iguales entre máquinas de cada prueba.
-   No se requiere comunicación cruzada OpenDDS/RustDDS para este proyecto.
+OpenDDS genera sus tipos C++ directamente desde el mismo IDL. Conserva dominio 0,
+tópico MarineNavigation, NoKey, Reliable y KeepLast(10). Su descubrimiento y datos
+entre máquinas usan RTPS unicast; no inicia el auxiliar Python de RustDDS.
+
+Primero en Ubuntu VMware, tras compilar y cargar el entorno OpenDDS:
+
+```bash
+bash run.sh opendds subscriber --local 192.168.10.33 --peer 192.168.10.15
+```
+
+Después en PowerShell Windows, desde la raíz del repositorio:
+
+```powershell
+.\opendds\run.ps1 publisher --local 192.168.10.15 --peer 192.168.10.33 --source synthetic
+# Para recibir del simulador en el mismo Windows:
+.\opendds\run.ps1 publisher --local 192.168.10.15 --peer 192.168.10.33 --source nmea --nmea-listen 127.0.0.1:3100
+```
+
+Ejecutar una sola prueba DDS a la vez. OpenDDS añade el puerto UDP 7412 para
+SEDP; sus reglas de firewall Windows nativo se describen en su README.
+`PUBLICADO` indica aceptación local; `RECIBIDO DDS` en la VM demuestra entrega.
+La validación Windows -> VMware debe realizarse en las dos máquinas del usuario.
 
 ## 8. Fuente GPS GPRMC por UDP
 
@@ -297,6 +315,22 @@ bash run.sh rustdds publisher \
   --peer 192.168.10.33 \
   --source synthetic
 ```
+
+## 9. Archivos locales y Git
+
+`.gitignore` excluye compilaciones, binarios, cachés, entornos virtuales y estado
+personal de editores. Para guardar artefactos locales dentro del repositorio,
+usar `logs/` para registros, `results/` para resultados, `captures/` para capturas
+y `tmp/` para temporales. Estas carpetas están ignoradas; los procesos existentes
+mantienen sus ubicaciones actuales de salida.
+
+Los CSV de ejemplo o fixtures pueden compartirse fuera de esas carpetas, por
+ejemplo en `examples/` o `tests/fixtures/`. Se conservan las fuentes, el IDL, las
+plantillas, los scripts, los archivos CMake fuente, la documentación y `Cargo.lock`.
+`.vscode/`, `.agents/` y `.codex/` no se excluyen globalmente: revisar su contenido
+antes de añadirlo para compartir solo configuraciones e instrucciones útiles,
+sin rutas personales ni credenciales. `.aws/`, `.env` y `.env.*` están excluidos;
+`.env.example` puede versionarse si contiene únicamente valores de ejemplo.
 
 Fuentes: RustDDS 0.11.2, código del paquete publicado y ejemplos oficiales;
 https://github.com/Atostek/RustDDS ; https://docs.rs/rustdds/0.11.2/ .

@@ -1,0 +1,4 @@
+// Generated compiler input; source: idl/Navigation.idl. Do not edit.
+#define sequence _sequence
+@navigation_contract@
+#undef sequence

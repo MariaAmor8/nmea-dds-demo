@@ -1,3 +1,52 @@
+# Compilaciones Rust y OpenDDS (incluyen tipos y archivos CMake generados)
 /target/
-*.csv
+/build/
+/opendds/build-*/
+/opendds/build/
+/opendds/out/
+
+# Binarios, bibliotecas, objetos y simbolos de depuracion
+*.exe
+*.dll
+*.so
+*.so.*
+*.dylib
+*.a
+*.lib
+*.o
+*.obj
+*.pdb
+*.ilk
+*.exp
+
+# Cache y entornos virtuales Python
 __pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Estado personal de editores (las configuraciones compartidas .vscode se conservan)
+.vs/
+.idea/
+*.user
+*.suo
+*.swp
+*.swo
+
+# Metadatos del sistema operativo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Resultados locales; los CSV de ejemplo fuera de estas carpetas se conservan
+/logs/
+/results/
+/captures/
+/tmp/
+
+# Credenciales y configuracion privada; .env.example puede compartirse
+/.aws/
+.env
+.env.*
+!.env.example
