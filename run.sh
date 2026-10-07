@@ -9,9 +9,11 @@ if [[ "$role" != publisher && "$role" != subscriber ]]; then echo "Rol invalido"
 case "$dds" in
   rustdds) cargo run --locked -p marine-rustdds --bin "$role" -- "$@" ;;
   opendds)
+    source opendds/scripts/environment.sh
+    marine_opendds_environment
     binary="${MARINE_DDS_BUILD_DIR:-opendds/build-linux}/$role"
     if [[ ! -x "$binary" ]]; then
-      echo "Falta $binary. Compila OpenDDS y el demo con CMake; consulta opendds/README.md." >&2
+      echo "Falta $binary. Ejecuta bash opendds/scripts/build.sh --test; consulta opendds/README.md." >&2
       exit 2
     fi
     dependencies="$(ldd "$binary" 2>&1)" || { echo "$dependencies" >&2; exit 2; }

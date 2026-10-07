@@ -5,7 +5,7 @@
 Un solo proyecto, un solo IDL y dos implementaciones que se prueban por separado:
 
 - RustDDS de Atostek: publicador WSL -> suscriptor Ubuntu VMware.
-- OpenDDS 3.34.0: publicador Windows nativo/MSVC -> suscriptor Ubuntu VMware.
+- OpenDDS 3.34.0: publicador WSL2 -> suscriptor Ubuntu VMware.
 
 Ambas ofrecen datos sintéticos a 1 Hz y entrada GPRMC por UDP. El contrato
 compartido es `idl/Navigation.idl`; no se exige interoperabilidad entre DDS.
@@ -56,7 +56,7 @@ Es una solución auxiliar para este demo, no una recomendación de despliegue fi
 - rustdds/src/bin/subscriber.rs: DataReader y comprobación de secuencia.
 - tools/udp_probe.py: diagnóstico unicast con ACK, puerto 17400.
 - run.sh: selector de implementación y rol para Linux.
-- opendds/: publicador/suscriptor C++, CMake, fuentes, pruebas y lanzador Windows.
+- opendds/: publicador/suscriptor C++, CMake, fuentes, pruebas y scripts Bash para WSL/Ubuntu.
 
 El generador Rust admite un module, un @topic struct sin clave y los tipos unsigned
 long, unsigned long long, long, double, boolean y string. Rechaza sintaxis distinta.
@@ -256,18 +256,21 @@ Primero en Ubuntu VMware, tras compilar y cargar el entorno OpenDDS:
 bash run.sh opendds subscriber --local 192.168.10.33 --peer 192.168.10.15
 ```
 
-Después en PowerShell Windows, desde la raíz del repositorio:
+Después en WSL, desde la raíz del repositorio:
 
-```powershell
-.\opendds\run.ps1 publisher --local 192.168.10.15 --peer 192.168.10.33 --source synthetic
-# Para recibir del simulador en el mismo Windows:
-.\opendds\run.ps1 publisher --local 192.168.10.15 --peer 192.168.10.33 --source nmea --nmea-listen 127.0.0.1:3100
+```bash
+bash opendds/scripts/build.sh --test
+bash run.sh opendds publisher --local 192.168.10.15 --peer 192.168.10.33 --source synthetic
+# Simulador Windows enviando UDP hacia WSL mirrored:
+bash run.sh opendds publisher --local 192.168.10.15 --peer 192.168.10.33 --source nmea --nmea-listen 127.0.0.1:3100
 ```
 
-Ejecutar una sola prueba DDS a la vez. OpenDDS añade el puerto UDP 7412 para
-SEDP; sus reglas de firewall Windows nativo se describen en su README.
-`PUBLICADO` indica aceptación local; `RECIBIDO DDS` en la VM demuestra entrega.
-La validación Windows -> VMware debe realizarse en las dos máquinas del usuario.
+Ejecutar una sola prueba DDS a la vez. OpenDDS añade UDP 7412 para SEDP;
+la guía OpenDDS describe las reglas Windows/Hyper-V y la preparación de ambas
+instalaciones Linux. Las IP son ejemplos y deben verificarse en cada máquina.
+`PUBLICADO` indica aceptación local; `RECIBIDO DDS` en la MV demuestra entrega.
+La validación WSL→VMware y Windows→WSL→VMware requiere pruebas reales en las
+máquinas del usuario. El soporte Windows nativo/MSVC se retiró.
 
 ## 8. Fuente GPS GPRMC por UDP
 

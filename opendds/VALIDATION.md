@@ -1,5 +1,55 @@
 # Validación de la implementación
 
+## Migración WSL — 7 de octubre de 2026
+
+El flujo soportado es ahora publicador OpenDDS en WSL2 → suscriptor Ubuntu
+VMware. Se retiraron los scripts Windows nativos. La implementación RustDDS,
+sus dependencias y el IDL compartido permanecen sin modificaciones.
+
+| Comprobación actual | Resultado |
+| --- | --- |
+| WSL2: OpenDDS existente 3.34.0, GCC 15.2.0, CMake 4.2.3, Debug | Generación IDL, publicador, suscriptor y pruebas compilan |
+| WSL: CTest `sources` y `cdr` | Pasan |
+| WSL: CTest `loopback` | Pasa fuera del sandbox en 23.04 s |
+| Build personalizado con espacios, invocado desde `/tmp` | Compila; `sources` y `cdr` pasan |
+| Lanzador desde otra carpeta con build personalizado | Ambos roles muestran `--help` correctamente |
+| Scripts Bash | Sintaxis válida; comprobaciones de ayuda, opciones, instalación ausente/incompleta, versión, precedencia, dependencias y propagación de fallos pasan |
+| Revisión de cambios | RustDDS, Cargo, generador, auxiliar RTPS, fuentes C++ e IDL compartido intactos |
+| Compilación y CTest en la MV del usuario | Pendiente: sin acceso a esa máquina en esta sesión |
+| WSL→MV: sintético un minuto, órdenes de arranque y reinicio | Pendiente de ejecutar en las dos máquinas |
+| Windows→WSL: UDP del simulador real | Pendiente: simulador no disponible en esta sesión |
+| Windows→WSL→MV: GPRMC válida e inválida | Pendiente de ejecutar con el simulador y la MV |
+
+La instalación reutilizada fue `$HOME/OpenDDS-3.34.0`; no se modificó.
+Comandos ejecutados desde la raíz del repositorio:
+
+```bash
+bash -n run.sh opendds/scripts/build.sh opendds/scripts/environment.sh
+bash opendds/scripts/build.sh --integration-tests
+```
+
+La compilación y las pruebas sin red pasaron dentro del sandbox. La integración
+falló inicialmente por `Operation not permitted` al abrir Netlink y UDP. Con
+la revisión automática autorizando ejecución fuera del sandbox, se repitió:
+
+```bash
+source opendds/scripts/environment.sh
+marine_opendds_environment
+ctest --test-dir opendds/build-linux -R '^loopback$' --output-on-failure
+```
+
+La prueba pasó. Esto verifica comunicación entre procesos locales en WSL, no
+la conectividad con VMware ni la entrega UDP desde Windows. Las comprobaciones
+de errores usaron instalaciones y herramientas simuladas temporales; las
+compilaciones, pruebas CDR y ejecución de ayuda usaron OpenDDS real.
+Para repetir la aceptación completa seguir [README.md](README.md).
+
+## Evidencia histórica — 6 de octubre de 2026
+
+Los resultados siguientes pertenecen al flujo anterior; no certifican la
+migración a WSL. Las pruebas entre máquinas listadas en esta tabla no se
+realizaron y el flujo Windows nativo dejó de estar soportado.
+
 Fecha: 6 de octubre de 2026. Este archivo distingue compilación, pruebas locales
 y comunicación entre las máquinas del usuario.
 
@@ -26,13 +76,12 @@ Los eventos CodeIntegrity 3033/3077 muestran bloqueo de
 `C:\OpenDDS-3.34.0\OpenDDS-3.34.0\ACE_wrappers\lib\TAO_Valuetyped.dll` por requisitos
 de firma/política. La prueba CDR y `publisher --help` terminan antes de ejecutar
 el código del demo. No se ha cambiado la política ni se ha eludido el bloqueo.
-El administrador del Windows debe resolver la autorización de esa dependencia
-antes de validar la ejecución nativa.
+Este bloqueo fue observado en el flujo nativo anterior; no se requiere resolverlo
+para ejecutar los binarios Linux actuales en WSL.
 
-Ver [README.md](README.md) para repetir pruebas, diagnosticar el bloqueo y
-registrar evidencia de recepción real en VMware.
+Ver [README.md](README.md) para el flujo actual y registrar recepción real en VMware.
 
-## Evidencia Linux
+### Evidencia Linux histórica
 
 OpenDDS se descargó de la publicación oficial `v3.34.0` y se compiló desde
 fuentes en `/tmp/OpenDDS-3.34.0`, con ACE 6.5.24 y TAO 2.5.24. El demo se

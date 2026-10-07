@@ -1,8 +1,11 @@
-# Demo OpenDDS 3.34.0
+# Demo OpenDDS 3.34.0 en WSL y Ubuntu VMware
 
-Publicador C++ en **Windows nativo** `192.168.10.15` y suscriptor C++ en
-**Ubuntu VMware** `192.168.10.33`. Ambos usan `../idl/Navigation.idl`, sin copia
-manual del tipo DDS. RustDDS permanece independiente y se ejecuta en WSL.
+Publicador C++ en **WSL2** y suscriptor C++ en **Ubuntu VMware**. Windows
+aloja WSL, ejecuta el simulador NMEA y administra el firewall. El flujo nativo
+Windows/MSVC se retiró. RustDDS conserva su implementación y sus instrucciones.
+
+Las IP `192.168.10.15` (WSL) y `192.168.10.33` (MV) son ejemplos: sustituirlas
+por las direcciones verificadas en cada máquina y también en las reglas.
 
 ## Contrato y red
 
@@ -40,76 +43,37 @@ No se abre multicast entre máquinas en el firewall.
 Ejecutar las pruebas OpenDDS y RustDDS por separado: comparten dominio y algunos
 puertos. No hay traducción de NAT ni DDS Security en este demo.
 
-## Windows: reutilizar la instalación existente
+## Preparar OpenDDS en cada Linux
 
-Se inspeccionó `C:\OpenDDS-3.34.0\OpenDDS-3.34.0`: OpenDDS 3.34.0, ACE 6.5.24,
-TAO 2.5.24, DLL **x64 Debug**, solución Visual Studio 2022, compilador `cl`.
-`setenv.cmd` y `cmake/config.cmake` contienen rutas antiguas de Downloads.
-El script de compilación adapta una copia privada del paquete CMake dentro del
-build y configura PATH con la ubicación actual; no modifica la instalación.
+Trabajar dentro del sistema de archivos Linux, por ejemplo `~/projects/nmea-dds-demo`,
+y conservar instalaciones y compilaciones separadas en WSL y la MV. No copiar
+binarios Windows, bibliotecas ni cachés CMake entre máquinas. No usar sudo para
+compilar ni ejecutar el demo.
 
-Desde PowerShell Windows, en la raíz de una copia del repositorio:
+Se necesita compilador C++17, CMake >= 3.20, Make, Perl y OpenDDS **3.34.0**;
+Python 3 se usa para diagnóstico e integración. Comprobar herramientas:
 
-```powershell
-.\opendds\scripts\build.cmd -Test
-```
-
-El script importa las herramientas MSVC 2022 x64, encuentra CMake (incluido el de
-Visual Studio si no está en PATH), genera el IDL, compila y ejecuta CTest.
-No requiere ejecutarse como administrador. Para otra ubicación o configuración:
-
-```powershell
-.\opendds\scripts\build.cmd -DdsRoot 'C:\ruta\OpenDDS-3.34.0' -Configuration Debug -Test
-$env:MARINE_DDS_ROOT = 'C:\ruta\OpenDDS-3.34.0'
-$env:MARINE_DDS_CONFIG = 'Debug'
-```
-
-El valor predeterminado es Debug porque las DLL disponibles son Debug. Release
-requiere primero bibliotecas OpenDDS/ACE/TAO Release x64. El script comprueba
-arquitectura y dependencias. Si se cambia de generador/arquitectura, utilizar otro
-`-BuildDir`; para ejecutarlo, definir `MARINE_DDS_BUILD_DIR` con esa misma ruta.
-Se recomienda una copia nativa Windows del repositorio para el uso diario: MSBuild
-puede producir advertencias de dependencias al compilar sobre el sistema de archivos
-WSL, que distingue mayúsculas y minúsculas.
-
-## Windows: instalar desde cero con Perl, MSVC y CMake
-
-1. Instalar Visual Studio 2022 o Build Tools 2022, con **Desktop development with
-   C++**, herramientas MSVC x64, Windows SDK y herramientas CMake. VS Code es un
-   editor; no proporciona el compilador MSVC por sí mismo.
-2. Instalar [Strawberry Perl](https://strawberryperl.com/), CMake si no se instaló
-   con Visual Studio, y Git para descargar dependencias y clonar este repositorio.
-3. Descargar el archivo de fuentes de la [versión OpenDDS 3.34.0](https://github.com/OpenDDS/OpenDDS/releases/tag/v3.34.0)
-   y extraerlo, por ejemplo, en `C:\OpenDDS-3.34.0\OpenDDS-3.34.0`. El directorio
-   elegido debe contener `configure`, `VERSION.txt` y `dds/`.
-4. Abrir **x64 Native Tools Command Prompt for VS 2022** y ejecutar:
-
-```bat
-cd /d C:\OpenDDS-3.34.0\OpenDDS-3.34.0
-perl --version
-cl
+```bash
 cmake --version
-configure
-msbuild DDS_TAOv2.sln -m:4 -p:Configuration=Debug,Platform=x64
-call setenv.cmd
+perl --version
+g++ --version
+make --version
+python3 --version
 ```
 
-`configure` usa Perl/MPC y descarga/configura ACE/TAO; requiere acceso a Internet.
-La solución y el nombre indicado por `configure` son la referencia si difieren de
-los del ejemplo. Comprobar `lib\OpenDDS_Dcpsd.dll`, `OpenDDS_Rtpsd.dll`,
-`OpenDDS_Rtps_Udpd.dll`, `ACE_wrappers\lib\ACEd.dll`, `TAOd.dll` y
-`bin\opendds_idl.exe`. Después compilar **el demo** con `build.cmd -Test`.
-Esta ruta usa Perl/MPC para preparar OpenDDS y CMake para construir el demo;
-no mezcla bibliotecas de instalaciones diferentes. No mover la instalación una
-vez configurada salvo que se gestione la actualización de sus rutas.
-
-## Ubuntu VMware: instalar y compilar
-
-Se requiere un compilador C++17 y CMake 3.20 o superior. En Ubuntu, desde una terminal normal:
+Si faltan, instalar en ese Ubuntu:
 
 ```bash
 sudo apt update
 sudo apt install -y build-essential cmake perl git curl ca-certificates python3 unzip
+```
+
+Si OpenDDS ya está compilado, reutilizarlo. Descargar sus fuentes no basta:
+deben existir `setenv.sh`, `bin/opendds_idl`, `ACE_wrappers/bin/tao_idl`,
+`cmake/OpenDDSConfig.cmake` y las bibliotecas `.so` de OpenDDS/ACE/TAO.
+Solo cuando falte una instalación compilada:
+
+```bash
 mkdir -p "$HOME/deps"
 cd "$HOME/deps"
 curl -fL https://github.com/OpenDDS/OpenDDS/releases/download/v3.34.0/OpenDDS-3.34.0.tar.gz -o OpenDDS-3.34.0.tar.gz
@@ -117,143 +81,213 @@ tar -xzf OpenDDS-3.34.0.tar.gz
 cd OpenDDS-3.34.0
 ./configure --no-tests
 make -j4
-source setenv.sh
 ```
 
-El `configure` de esta versión descarga ACE/TAO y MPC. No reemplazar sus
-bibliotecas por las de Windows ni copiar binarios `.exe` a Ubuntu. Si ya hay una
-instalación Linux de OpenDDS 3.34.0, cargar su `setenv.sh` y omitir la instalación.
-Usar el nombre de directorio realmente creado por el archivo descargado.
+`configure` usa Perl/MPC y descarga ACE/TAO; requiere Internet. No mover la
+instalación después de configurarla: `setenv.sh` y el paquete CMake contienen rutas.
 
-En la raíz del repositorio clonado o copiado a Ubuntu:
+## Compilar y ejecutar desde Bash
+
+Desde la raíz del repositorio, tanto en WSL como en la MV:
 
 ```bash
-cmake -S opendds -B opendds/build-linux \
-  -DOpenDDS_DIR="$DDS_ROOT/cmake" -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
-cmake --build opendds/build-linux --parallel 4
-ctest --test-dir opendds/build-linux --output-on-failure
+bash opendds/scripts/build.sh --test
 ```
 
-CMake exige **exactamente 3.34.0**. Los tipos generados y binarios quedan en
-`opendds/build-linux/`, excluido de Git. Cargar `source "$HOME/deps/OpenDDS-3.34.0/setenv.sh"`
-en cada terminal nueva antes de ejecutar. No se necesita Rust para compilar
-OpenDDS. No usar sudo para compilar o ejecutar el demo.
+La instalación se selecciona en este orden: `--dds-root`, `MARINE_DDS_ROOT`,
+`DDS_ROOT`, `$HOME/OpenDDS-3.34.0`. El script carga `setenv.sh`, comprueba versión,
+generadores y dependencias Linux, configura CMake y compila. No modifica OpenDDS.
+Si la instalación está en otro lugar, definirla en cada terminal:
 
-## Firewall y conectividad
+```bash
+export MARINE_DDS_ROOT="$HOME/deps/OpenDDS-3.34.0"
+bash opendds/scripts/build.sh --test
+```
 
-Confirmar `192.168.10.15` con `ipconfig` en Windows y `192.168.10.33` con
-`ip -br -4 addr` en VMware. Mantener VMware Bridged. OpenDDS Windows no depende
-de la configuración mirrored de WSL ni de sus reglas Hyper-V.
+`--dds-root` selecciona la instalación para esa compilación; para ejecutar con
+la misma instalación usar `MARINE_DDS_ROOT` o cargar su `setenv.sh`.
+El lanzador también carga el entorno automáticamente.
 
-En PowerShell Windows **como administrador**, una vez:
+Valores predeterminados: `opendds/build-linux`, `Debug`, cuatro trabajos y pruebas
+CTest desactivadas hasta solicitar `--test`. Ejemplo personalizado:
+
+```bash
+export MARINE_DDS_BUILD_DIR="opendds/build-local debug"
+bash opendds/scripts/build.sh --build-dir "$MARINE_DDS_BUILD_DIR" --build-type Debug --jobs 4 --integration-tests
+```
+
+`--integration-tests` habilita y ejecuta CTest completo, incluida la prueba UDP local;
+requiere Python 3 y sockets funcionales. Una compilación posterior sin esa opción
+desactiva la integración en CTest. También se admiten Release, RelWithDebInfo y
+MinSizeRel. Las rutas relativas de build se resuelven desde la raíz del repositorio,
+incluso si se llama al script por ruta absoluta desde otra carpeta. Si cambia el
+generador o la instalación OpenDDS, usar un directorio de build nuevo.
+Los tipos generados permanecen en el build, ignorado por Git por defecto.
+
+## WSL mirrored, VMware Bridged y firewall
+
+En Windows, comprobar `wsl --version` y `wsl --status`. Mirrored requiere
+Windows 11 22H2 o superior y una versión de WSL compatible. En
+`%UserProfile%\.wslconfig`, conservar las otras opciones y establecer:
+
+```ini
+[wsl2]
+networkingMode=mirrored
+```
+
+Guardar el trabajo de las distribuciones antes de ejecutar `wsl --shutdown` en
+PowerShell; después abrir WSL de nuevo. Configurar VMware en **Bridged** sobre
+la interfaz activa. Confirmar IP y ruta en ambos Linux:
+
+```bash
+ip -br -4 addr
+ip route
+```
+
+La IP de `--local` debe pertenecer al Linux donde corre el proceso. No usar una
+IP NAT antigua o deducirla exclusivamente de `ipconfig`. No ejecutar RustDDS y
+OpenDDS simultáneamente: comparten dominio y puertos.
+
+En PowerShell Windows **como administrador**, crear reglas dedicadas a OpenDDS
+sin reemplazar las reglas existentes de RustDDS. Si ya existen, comprobarlas y
+actualizar su origen cuando cambie la MV:
 
 ```powershell
+New-NetFirewallHyperVRule `
+  -Name 'NMEA-OpenDDS-WSL-Unicast' `
+  -DisplayName 'NMEA OpenDDS - VMware hacia WSL' `
+  -Direction Inbound `
+  -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' `
+  -Protocol UDP -LocalPorts '7410-7412' `
+  -RemoteAddresses '192.168.10.33' -Action Allow
+
 New-NetFirewallRule `
-  -Name 'NMEA-OpenDDS-Windows-Unicast' `
+  -Name 'NMEA-OpenDDS-WSL-Windows' `
   -DisplayName 'NMEA OpenDDS - UDP desde VMware' `
   -Direction Inbound -Protocol UDP -LocalPort '7410-7412' `
-  -LocalAddress '192.168.10.15' -RemoteAddress '192.168.10.33' `
-  -Profile Any -Action Allow
+  -RemoteAddress '192.168.10.33' -Profile Any -Action Allow
 ```
 
-Si UFW está instalado y activo en VMware:
+Si UFW está instalado y activo en la MV:
 
 ```bash
 sudo ufw allow from 192.168.10.15 to any port 7410:7412 proto udp
 ```
 
-Las políticas de salida deben permitir los mismos puertos hacia el par; si existe
-una política restrictiva, autorizar ese destino. No desactivar el firewall.
-Si cambian las IP, actualizar comandos y reglas. Las reglas RustDDS para
-`7410–7411` no cubren SEDP en `7412` ni necesariamente el proceso Windows.
+Si está activo en WSL, autorizar análogamente el origen de la MV. No instalar UFW
+solo para esta prueba ni desactivar firewalls. Una política de salida restrictiva
+debe permitir los mismos puertos hacia el par. Los puertos `7410–7411` de RustDDS
+no cubren SEDP en `7412`.
 
-El probe existente puede comprobar el retorno UDP antes de DDS. En VMware:
+Antes de DDS, probar retorno UDP. En la MV:
 
 ```bash
 python3 tools/udp_probe.py listen --local 192.168.10.33
 ```
 
-Y desde Windows con Python 3 instalado, en la raíz del repositorio:
+En WSL:
 
-```powershell
-py -3 tools\udp_probe.py send --local 192.168.10.15 --peer 192.168.10.33
+```bash
+python3 tools/udp_probe.py send --local 192.168.10.15 --peer 192.168.10.33
 ```
 
-Ese probe usa UDP 17400, que requiere su propia autorización de firewall;
-no demuestra que los puertos DDS estén abiertos.
+El probe usa UDP `17400`: necesita autorización separada en Windows/Hyper-V y
+los Linux con firewall activo, limitada al par. Reutilizar las reglas previas de
+ese puerto si corresponden a las IP actuales. Su éxito no verifica los puertos DDS.
 
-## Ejecutar el demo
+Si faltan esas reglas, en PowerShell administrador:
 
-Primero en VMware, tras cargar el entorno Linux:
+```powershell
+New-NetFirewallHyperVRule `
+  -Name 'NMEA-OpenDDS-WSL-Probe' -DisplayName 'OpenDDS probe VMware hacia WSL' `
+  -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' `
+  -Protocol UDP -LocalPorts 17400 -RemoteAddresses '192.168.10.33' -Action Allow
+New-NetFirewallRule `
+  -Name 'NMEA-OpenDDS-WSL-Probe-Windows' -DisplayName 'OpenDDS probe UDP' `
+  -Direction Inbound -Protocol UDP -LocalPort 17400 `
+  -RemoteAddress '192.168.10.33' -Profile Any -Action Allow
+```
+
+Si UFW está activo en la MV: `sudo ufw allow from 192.168.10.15 to any port 17400 proto udp`.
+En WSL con UFW activo, usar el origen `192.168.10.33` para esa misma regla.
+
+## Ejecutar WSL → MV
+
+Primero en VMware, desde la raíz del repositorio:
 
 ```bash
 bash run.sh opendds subscriber --local 192.168.10.33 --peer 192.168.10.15
 ```
 
-Después en PowerShell Windows, desde la raíz del repo:
+Después en WSL:
 
-```powershell
-.\opendds\run.ps1 publisher --local 192.168.10.15 --peer 192.168.10.33 --source synthetic
+```bash
+bash run.sh opendds publisher --local 192.168.10.15 --peer 192.168.10.33 --source synthetic
 ```
 
-Para recibir GPRMC del simulador Windows, terminar el publicador y ejecutar:
+`PUBLICADO` confirma aceptación local. `RECIBIDO DDS` en la MV demuestra entrega.
+Esperar hasta 30 segundos para la asociación y mantener la recepción un minuto.
+La secuencia inicial puede ser mayor que uno por la durabilidad volátil.
+Ctrl+C termina el proceso; comprobar que se puede reiniciar.
 
-```powershell
-.\opendds\run.ps1 publisher --local 192.168.10.15 --peer 192.168.10.33 --source nmea --nmea-listen 127.0.0.1:3100
+## Simulador Windows → WSL → MV
+
+Configurar el simulador Windows para enviar **UDP** a `127.0.0.1:3100`. En WSL,
+terminar el publicador sintético y ejecutar:
+
+```bash
+bash run.sh opendds publisher --local 192.168.10.15 --peer 192.168.10.33 \
+  --source nmea --nmea-listen 127.0.0.1:3100
 ```
 
-Configurar el simulador para enviar a `127.0.0.1:3100` en el mismo Windows.
-La entrada NMEA ya no pasa por WSL en esta implementación.
+Comprobar con el simulador real que la consola WSL muestra la sentencia recibida
+y que la MV recibe la misma `raw_nmea` y sus campos. Loopback DDS entre procesos
+Linux no demuestra el recorrido UDP Windows→WSL. La secuencia avanza únicamente
+con GPRMC válidas; un checksum incorrecto debe rechazarse. GPRMC no proporciona
+heading ni profundidad; ambos se muestran como no disponibles.
 
-Para una prueba sin simulador, después de ver `PublicationMatched lectores=1`,
-enviar esta sentencia desde otra ventana PowerShell en Windows:
+Si no llega UDP por localhost, capturar en WSL:
 
-```powershell
-$udp = [Net.Sockets.UdpClient]::new()
-try {
-  $line = 'GPS1 on UDP2: $GPRMC,131537.83,A,0000.95081,S,00000.29512,W,0010.0,089.0,051026,0.0,W,A,S*66'
-  $bytes = [Text.Encoding]::ASCII.GetBytes($line + "`r`n")
-  [void]$udp.Send($bytes, $bytes.Length, '127.0.0.1', 3100)
-} finally { $udp.Dispose() }
+```bash
+sudo tcpdump -ni any 'udp port 3100'
 ```
 
-Se acepta una sentencia `$GPRMC` con prefijo, como `GPS1 on UDP2:`. El checksum
-XOR debe coincidir; cada datagrama puede contener varias líneas. `raw_nmea`
-conserva toda la línea sin espacios exteriores. `course_deg` es curso sobre el
-suelo, no rumbo verdadero; GPRMC no suministra heading ni profundidad, que se
-publican como `0.0` y con indicadores `false`, y se imprimen `N/D`.
-El estado `A` publica `position_valid=true`; `V` publica `false` si los demás
-campos obligatorios son parseables. Campos vacíos/incorrectos se rechazan.
+Usar como destino del simulador una IPv4 de WSL comprobada con `ip -br -4 addr`
+y alcanzable desde Windows. Escuchar en `--nmea-listen 0.0.0.0:3100`. Si se usa la
+IP reflejada del anfitrión, comprobar la necesidad de `hostAddressLoopback=true`
+bajo `[experimental]` en `.wslconfig`, reiniciando WSL tras cambiarlo. Confirmar
+la entrega UDP en esa topología antes de continuar con DDS.
 
-Para mantener la convención temporal Rust actual, `timestamp_ms` usa fecha UTC,
-año `2000 + YY` y segundos enteros; la fracción horaria se valida pero no se
-incorpora. OpenDDS valida además fechas civiles reales, números finitos y
-velocidad no negativa. No se modifica el parser Rust. `simulated=false` identifica
-la fuente UDP; no demuestra que el emisor sea un GPS físico.
+Para este acceso por dirección, autorizar **solo UDP 3100 desde la dirección de
+origen real de Windows**. En PowerShell administrador, sustituir el ejemplo:
 
-La secuencia empieza en 1 y avanza solo para líneas aceptadas, aunque una escritura
-DDS posterior falle; el error de escritura se informa. La fuente sintética utiliza
-`simulated=true`. `PUBLICADO DDS` confirma aceptación local; **`RECIBIDO DDS` en
-VMware es la evidencia de entrega**. PublicationMatched/SubscriptionMatched
-confirman asociación, no recepción de todas las muestras.
+```powershell
+$simulatorSource = '192.168.10.15'
+New-NetFirewallHyperVRule `
+  -Name 'NMEA-OpenDDS-WSL-NMEA' -DisplayName 'NMEA simulador hacia WSL' `
+  -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' `
+  -Protocol UDP -LocalPorts 3100 -RemoteAddresses $simulatorSource -Action Allow
+New-NetFirewallRule `
+  -Name 'NMEA-OpenDDS-WSL-NMEA-Windows' -DisplayName 'NMEA UDP hacia WSL' `
+  -Direction Inbound -Protocol UDP -LocalPort 3100 `
+  -RemoteAddress $simulatorSource -Profile Any -Action Allow
+```
 
-La primera secuencia recibida puede ser mayor que 1 por la durabilidad volátil.
-Tras reiniciar el publicador, el lector puede señalar un salto por el reinicio de
-secuencia. No medir latencia con timestamps sin sincronización de relojes.
-Ctrl+C cierra sockets y entidades DDS; `--duration 60` permite una prueba finita.
+Si UFW está activo en WSL, permitir ese mismo origen hacia UDP 3100. Estas reglas
+son distintas de DDS y del probe. No usar `netsh portproxy` para redirigir UDP.
 
-Si PowerShell bloquea scripts por su política local, se puede ejecutar el lanzador
-con `powershell -NoProfile -ExecutionPolicy Bypass -File .\opendds\run.ps1 ...`;
-esto se aplica a ese proceso, sin cambiar la política global.
+## Pruebas y aceptación
 
-## Pruebas reproducibles
+```bash
+bash opendds/scripts/build.sh --integration-tests
+```
 
-`CTest` ejecuta pruebas de fuentes/configuración y un roundtrip CDR de todos los
-campos del tipo generado, incluida la cadena, ambos órdenes de bytes, indicadores
-true/false y los límites de los enteros. Las comprobaciones siguen activas en Release.
+CTest `sources` verifica GPRMC y configuración; `cdr` verifica todos los campos del
+tipo generado, ambas endianidades, cadenas y límites numéricos. `loopback` comprueba
+ambos órdenes de arranque, reinicio del lector, sintético, NMEA, rechazo sin consumo
+de secuencia, señales, IP inválida, puertos ocupados y reutilización tras el cierre.
 
-Para probar dos procesos en una sola máquina, asignar puertos locales distintos.
-Ejemplo Linux en dos terminales con el entorno OpenDDS cargado:
+Para probar dos procesos manualmente en el mismo Linux, usar puertos distintos:
 
 ```bash
 bash run.sh opendds subscriber --local 127.0.0.1 --peer 127.0.0.1 \
@@ -262,98 +296,34 @@ bash run.sh opendds publisher --local 127.0.0.1 --peer 127.0.0.1 \
   --spdp-port 17410 --sedp-port 17412 --data-port 17411 --peer-spdp-port 17510 --duration 12
 ```
 
-En Windows usar `opendds/run.ps1` con los mismos roles y argumentos. No lanzar
-los dos procesos con los puertos predeterminados en el mismo host.
+Aceptación entre máquinas: compilar y pasar CTest en WSL y la MV; recibir datos
+sintéticos durante un minuto sin saltos posteriores al arranque; invertir el orden
+de inicio; reiniciar el suscriptor; comparar GPRMC original y campos; inyectar un
+checksum incorrecto; cerrar y reiniciar ambos procesos. Registrar versiones,
+arquitectura, IP, comandos y logs. No confundir pruebas locales con esta aceptación.
 
-El test automatizado de integración necesita Python 3 y el entorno OpenDDS:
+## Diagnóstico y evidencia
 
-```bash
-python3 opendds/tests/integration.py --bin-dir opendds/build-linux
-```
-
-En Windows, configurar PATH mediante el entorno de OpenDDS y ejecutar:
-
-```powershell
-$env:PATH = 'C:\OpenDDS-3.34.0\OpenDDS-3.34.0\lib;C:\OpenDDS-3.34.0\OpenDDS-3.34.0\ACE_wrappers\lib;' + $env:PATH
-py -3 opendds\tests\integration.py --bin-dir opendds\build-windows\Debug
-```
-
-También puede habilitarse en CTest reconfigurando CMake con
-`-DMARINE_INTEGRATION_TESTS=ON` (requiere Python 3 y sockets locales funcionales).
-
-Comprueba ambos órdenes de arranque, reinicio del lector, transmisión sintética y
-NMEA, rechazo sin consumo de secuencia, cierre por señal, IP inválida, puerto
-ocupado y correspondencia exacta entre resúmenes publicados y recibidos. Los logs
-se guardan en un directorio temporal y su ruta se imprime. Una prueba local no
-sustituye la prueba Windows→VMware.
-
-Aceptación en las dos máquinas del usuario:
-
-1. Compilar y pasar CTest en Windows y Ubuntu; registrar versión, arquitectura y configuración.
-2. Mantener recepción sintética un minuto; verificar asociación y ausencia de saltos después del arranque.
-3. Enviar GPRMC y comparar la línea original y campos en las dos consolas; inyectar checksum incorrecto y comprobar rechazo.
-4. Invertir orden de arranque; reiniciar el suscriptor; comprobar que vuelve a recibir muestras nuevas.
-5. Probar IP local inexistente y puerto ocupado: deben producir error, no anunciar éxito de entrega.
-6. Terminar con Ctrl+C y reiniciar, comprobando que los puertos quedan disponibles.
-
-## Diagnóstico
-
-Esperar hasta 30 segundos antes de diagnosticar asociación. Para más información:
-
-```powershell
-.\opendds\run.ps1 publisher --local 192.168.10.15 --peer 192.168.10.33 --debug 4
-Get-NetUDPEndpoint | Where-Object LocalPort -in 7410,7411,7412
-```
-
-En VMware:
+En cada Linux:
 
 ```bash
-bash run.sh opendds subscriber --local 192.168.10.33 --peer 192.168.10.15 --debug 4
+bash run.sh opendds publisher --local 192.168.10.15 --peer 192.168.10.33 --debug 4 --duration 30
 ss -lunp
-sudo tcpdump -ni any 'udp and host 192.168.10.15 and portrange 7410-7412'
+ldd opendds/build-linux/publisher
+sudo tcpdump -ni any 'udp and host 192.168.10.33 and portrange 7410-7412'
 ```
 
-En Windows, Wireshark con filtro
-`udp && ip.addr == 192.168.10.33 && udp.port >= 7410 && udp.port <= 7412`.
-Sin asociación: revisar IP, rutas, firewall y paquetes SPDP/SEDP. Con asociación
-pero sin datos: revisar fuente UDP y errores de escritura. Una IP remota válida
-pero incorrecta deja al proceso esperando; `--duration` limita la prueba.
-Errores de DLL: usar Debug/Release correspondiente y PATH de ACE/OpenDDS;
-no mezclar x86 con x64. Guardar las dos consolas y la captura al reportar un fallo.
+En la MV, usar el rol subscriber e intercambiar las IP del ejemplo. Si falta una
+biblioteca, comprobar la instalación elegida y `setenv.sh`. Sin asociación,
+revisar IP, rutas, firewall y SPDP/SEDP. Con asociación sin datos, revisar la fuente
+UDP y los errores de escritura. Guardar ambas consolas y capturas en `logs/` y
+`captures/`, ignorados por Git.
 
-## Evidencia y límites
-
-El estado de validación de esta entrega se registra en [VALIDATION.md](VALIDATION.md).
-La comunicación entre Windows y VMware solo puede certificarse con ejecución en
-esas máquinas. No se presenta una compilación o un roundtrip CDR como prueba de
-comunicación entre hosts.
+Consultar [VALIDATION.md](VALIDATION.md) para distinguir evidencia histórica,
+validación WSL actual y pruebas pendientes entre máquinas.
 
 Referencias oficiales: [compilación OpenDDS](https://opendds.readthedocs.io/en/latest-release/devguide/building/index.html),
 [integración CMake](https://opendds.readthedocs.io/en/latest-release/devguide/building/cmake.html),
-[configuración RTPS](https://opendds.readthedocs.io/en/latest-release/devguide/run_time_configuration.html).
-Los parámetros se contrastaron también con la documentación y el código fuente
-incluidos en la instalación 3.34.0, en particular `dds/DCPS/RTPS/Spdp.cpp`.
-
-### Bloqueo de DLL en Windows observado en este entorno
-
-Los binarios MSVC se compilan, pero la política Windows de integridad/firma
-bloquea `ACE_wrappers\lib\TAO_Valuetyped.dll` de la instalación existente antes
-de entrar en el programa. El proceso devuelve `0xc0e90002`; CTest lo muestra
-como excepción. Los eventos CodeIntegrity 3033 y 3077 identifican esa DLL.
-Este bloqueo también afecta `publisher --help`, por lo que no es un fallo de red.
-
-Para consultar los eventos relevantes, sin cambiar políticas:
-
-```powershell
-Get-WinEvent -FilterHashtable @{
-  LogName='Microsoft-Windows-CodeIntegrity/Operational'
-  StartTime=(Get-Date).AddMinutes(-15)
-} | Where-Object Message -match 'OpenDDS|TAO_Valuetyped|publisher.exe|cdr_tests.exe' |
-  Select-Object Id,Message | Format-List
-```
-
-La dependencia debe cumplir la política de firma/autorización de ese Windows,
-con ayuda de quien administre dicha política. No se desactiva la protección ni
-se cambia la instalación como parte de este demo. Una vez resuelto, repetir
-`build.cmd -Test` y las pruebas de comunicación. El README no declara recepción
-Windows→VMware como validada mientras exista este bloqueo.
+[configuración RTPS](https://opendds.readthedocs.io/en/latest-release/devguide/run_time_configuration.html),
+[red WSL y firewall](https://learn.microsoft.com/en-us/windows/wsl/networking),
+[opciones .wslconfig](https://learn.microsoft.com/en-us/windows/wsl/wsl-config).
