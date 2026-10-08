@@ -13,11 +13,8 @@ Para instalar, compilar y ejecutar OpenDDS, seguir [opendds/README.md](opendds/R
 Las secciones 1–6 siguientes describen el flujo RustDDS existente.
 El estado de pruebas de OpenDDS está en [opendds/VALIDATION.md](opendds/VALIDATION.md).
 
-Validado al preparar esta entrega: ambos binarios compilan con Rust 1.99.0;
-la prueba de serialización/deserialización CDR de todos los campos pasa.
-El entorno de preparación no permite enumerar interfaces ni recibir multicast;
-por tanto, la comunicación entre dos participantes y el auxiliar RTPS NO se
-han validado en ejecución aquí. Deben comprobarse en las máquinas del usuario.
+La validación actual de RustDDS original está en [RUSTDDS_NATIVE_VALIDATION.md](RUSTDDS_NATIVE_VALIDATION.md).
+Los resultados anteriores del parche se conservan como históricos en [MULTICAST_VALIDATION.md](MULTICAST_VALIDATION.md).
 
 Se fija RustDDS 0.11.2, cuya API se inspeccionó; no es una afirmación de que sea
 la versión más reciente. Cargo.lock fija las dependencias. Ejecutar --locked.
@@ -31,27 +28,26 @@ Domain 0; Topic MarineNavigation; tipo Marine::Navigation; NoKey;
 Reliability Reliable; History KeepLast(10). Una instancia de participante por
 OS, con participant id 0. No ejecutar simultáneamente otros demos en domain 0.
 
-DDS sigue intercambiando información de participantes y extremos. No hay
-asociación completamente estática: los auxiliares hacen posible ese intercambio
-usando direcciones conocidas. No se requiere multicast ENTRE máquinas.
+Ambos hosts pueden ejecutar cualquiera de los roles. La validación remota se limita
+a publicador WSL → suscriptor VMware; no se prueban roles invertidos.
 
-Cada ejecutable inicia automáticamente tools/rtps_unicast_bridge.py en su OS.
-El auxiliar escucha la emisión multicast LOCAL de RustDDS en 239.255.0.1,
-puertos 7400 (metadatos) y 7401 (datos), y reenvía paquetes RTPS sin modificar
-hacia la IP fija del otro OS, puertos unicast 7410 y 7411 (domain 0, id 0).
-Solo reenvía datagramas cuyo origen coincide con la IP local elegida; los paquetes
-remotos entran por puertos distintos y no se reenvían, evitando bucles.
-Los ACK y el tráfico que RustDDS envía directamente por unicast van directamente
-entre participantes. El auxiliar no es un discovery server ni una función nativa
-initial_peers de RustDDS. Necesita multicast LOCAL funcional y UDP unicast en
-ambos sentidos. No incorpora DDS Security, retransmisión ni reescritura de NAT.
-Es una solución auxiliar para este demo, no una recomendación de despliegue final.
+SPDP descubre participantes automáticamente por `239.255.0.1:7400`.
+Se usa RustDDS 0.11.2 original de crates.io, sin copia ni parche local. La biblioteca
+enumera sus interfaces y configura sockets, TTL y locators con su comportamiento
+nativo; el demo no selecciona ni limita una interfaz. No acepta `--local`.
+No se usa un puente Python ni se configura una IP remota. SEDP y datos conservan
+la política nativa, con UDP 7401 multicast y 7410/7411 unicast (participante 0).
+DDS Reliable requiere tráfico de control/ACK de vuelta aunque las muestras fluyan
+únicamente WSL → VM. No hay reescritura de NAT ni DDS Security.
+
+La guía [MULTICAST.md](MULTICAST.md) contiene firewall, capturas y comandos de
+aceptación con las IP actuales; la recepción en la VM requiere evidencia del usuario.
 
 ## Archivos
 
 - idl/Navigation.idl: fuente única de tipos.
 - tools/idl_to_rust.py: generador limitado, invocado por build.rs.
-- rustdds/src/lib.rs: configuración, auxiliar y generador de muestras.
+- rustdds/src/lib.rs: configuración del demo y generador de muestras.
 - rustdds/src/bin/publisher.rs: DataWriter.
 - rustdds/src/bin/subscriber.rs: DataReader y comprobación de secuencia.
 - tools/udp_probe.py: diagnóstico unicast con ACK, puerto 17400.
@@ -136,7 +132,7 @@ New-NetFirewallHyperVRule `
     -Direction Inbound `
     -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' `
     -Protocol UDP `
-    -LocalPorts "7410-7411" `
+    -LocalPorts "7400-7401","7410-7411" `
     -RemoteAddresses "192.168.10.33" `
     -Action Allow
 
@@ -145,7 +141,7 @@ New-NetFirewallRule `
     -DisplayName "NMEA DDS - UDP desde VMware" `
     -Direction Inbound `
     -Protocol UDP `
-    -LocalPort "7410-7411" `
+    -LocalPort "7400-7401","7410-7411" `
     -RemoteAddress "192.168.10.33" `
     -Profile Any `
     -Action Allow
@@ -156,6 +152,7 @@ No desactivar el firewall. Las reglas anteriores de puerto 17400 no cubren DDS.
 Si la MV tiene UFW instalado y activo, ejecutar EN LA MV:
 
 ```bash
+sudo ufw allow from 192.168.10.15 to 239.255.0.1 port 7400:7401 proto udp
 sudo ufw allow from 192.168.10.15 to any port 7410:7411 proto udp
 ```
 
@@ -166,16 +163,16 @@ No es necesario instalar UFW si no está instalado.
 Primero EN LA MV, desde ~/projects/nmea-dds-demo:
 
 ```bash
-bash run.sh rustdds subscriber --local 192.168.10.33 --peer 192.168.10.15
+bash run.sh rustdds subscriber
 ```
 
 Después EN WSL, desde la misma ruta del proyecto:
 
 ```bash
-bash run.sh rustdds publisher --local 192.168.10.15 --peer 192.168.10.33
+bash run.sh rustdds publisher
 ```
 
-El auxiliar arranca dentro del ejecutable, no requiere otra terminal.
+El participante usa multicast nativo, sin auxiliar.
 Puede haber varios segundos de espera (los anuncios de participante son periódicos).
 Esperar hasta 30 segundos antes de diagnosticar. PUBLICADO solo confirma que
 RustDDS aceptó la muestra; la evidencia de entrega es RECIBIDO en la MV.
@@ -192,17 +189,14 @@ durabilidad es volátil. Los saltos posteriores se informan en consola.
 Estas muestras no representan un recorrido físico coherente: prueban el transporte.
 Los timestamps no deben usarse como medida de latencia sin sincronizar relojes.
 
-Mantener la prueba un minuto. Ctrl+C termina el ejecutable y su auxiliar.
+Mantener la prueba un minuto. Ctrl+C termina el ejecutable.
 Para repetir, iniciar de nuevo el suscriptor y el publicador.
 
 ## 5. Si no recibe
 
-- Error en auxiliar: comprobar IP local, python3 y multicast local. No usar sudo
-  para ejecutar cargo; corregir la configuración si los sockets están restringidos.
+- Revisar las interfaces enumeradas por RustDDS y acceso multicast UDP 7400; el demo no selecciona interfaces.
 - Participant id inesperado: cerrar otros demos domain 0. Se espera id 0 en cada OS.
-- En ambos lados debe aparecer [RTPS bridge] con destino del par y puerto 7410.
-  La línea 7411 solo aparece si hay emisión local multicast de datos: el tráfico
-  directo unicast no pasa por el auxiliar.
+- Revisar [diagnóstico multicast](MULTICAST.md); no invertir los roles entre hosts.
 - Captura EN WSL mientras ejecutas el demo:
 
 ```bash
@@ -218,11 +212,11 @@ sudo tcpdump -ni any 'udp and src host 192.168.10.15 and (dst port 7410 or dst p
 - Diagnóstico Rust:
 
 ```bash
-RUST_LOG=info bash run.sh rustdds publisher --local 192.168.10.15 --peer 192.168.10.33
+RUST_LOG=info bash run.sh rustdds publisher
 ```
 
 Guardar las salidas de ambas consolas si falla. No confundir el éxito de compilación
-con el éxito de comunicación. El auxiliar no puede resolver un bloqueo unicast.
+con el éxito de comunicación. DDS requiere tráfico de control de vuelta.
 
 ## 6. Un único repositorio GitHub
 
@@ -247,22 +241,21 @@ para OpenDDS.
 ## 7. Demo OpenDDS
 
 OpenDDS genera sus tipos C++ directamente desde el mismo IDL. Conserva dominio 0,
-tópico MarineNavigation, NoKey, Reliable y KeepLast(10). Su descubrimiento y datos
-entre máquinas usan RTPS unicast; no inicia el auxiliar Python de RustDDS.
+tópico MarineNavigation, NoKey, Reliable y KeepLast(10). Descubre participantes por SPDP multicast; SEDP y datos usan RTPS unicast.
 
 Primero en Ubuntu VMware, tras compilar y cargar el entorno OpenDDS:
 
 ```bash
-bash run.sh opendds subscriber --local 192.168.10.33 --peer 192.168.10.15
+bash run.sh opendds subscriber --local 192.168.10.33
 ```
 
 Después en WSL, desde la raíz del repositorio:
 
 ```bash
 bash opendds/scripts/build.sh --test
-bash run.sh opendds publisher --local 192.168.10.15 --peer 192.168.10.33 --source synthetic
+bash run.sh opendds publisher --local 192.168.10.15 --source synthetic
 # Simulador Windows enviando UDP hacia WSL mirrored:
-bash run.sh opendds publisher --local 192.168.10.15 --peer 192.168.10.33 --source nmea --nmea-listen 127.0.0.1:3100
+bash run.sh opendds publisher --local 192.168.10.15 --source nmea --nmea-listen 127.0.0.1:3100
 ```
 
 Ejecutar una sola prueba DDS a la vez. OpenDDS añade UDP 7412 para SEDP;
@@ -285,8 +278,7 @@ Iniciar el suscriptor en la MV como siempre y, en WSL, ejecutar:
 
 ```bash
 bash run.sh rustdds publisher \
-  --local 192.168.10.15 \
-  --peer 192.168.10.33 \
+  \
   --source nmea \
   --nmea-listen 127.0.0.1:3100
 ```
@@ -314,8 +306,7 @@ El modo sintético original sigue disponible para diagnóstico:
 
 ```bash
 bash run.sh rustdds publisher \
-  --local 192.168.10.15 \
-  --peer 192.168.10.33 \
+  \
   --source synthetic
 ```
 

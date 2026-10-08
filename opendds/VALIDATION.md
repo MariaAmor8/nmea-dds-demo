@@ -1,3 +1,6 @@
+> Registro histórico de la implementación anterior con peers unicast. Para la rama
+> multicast consultar [MULTICAST_VALIDATION.md](../MULTICAST_VALIDATION.md).
+
 # Validación de la implementación
 
 ## Migración WSL — 7 de octubre de 2026

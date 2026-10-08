@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real OpenDDS loopback tests; run with the OpenDDS DLL/library environment loaded."""
+"""Real OpenDDS same-host multicast tests; run with the OpenDDS DLL/library environment loaded."""
 import argparse
 import os
 from pathlib import Path
@@ -25,12 +25,12 @@ class Harness:
         self.processes = []
 
     def start(self, role, name, duration=0, extra=()):
-        base, peer = (17410, 17510) if role == 'publisher' else (17510, 17410)
+        base = 17410 if role == 'publisher' else 17510
         suffix = '.exe' if os.name == 'nt' else ''
-        command = [str(self.binaries / (role + suffix)), '--local', '127.0.0.1',
-                   '--peer', '127.0.0.1', '--spdp-port', str(base),
+        command = [str(self.binaries / (role + suffix)), '--local', os.environ['MARINE_TEST_LOCAL'],
+                   '--spdp-port', str(base),
                    '--sedp-port', str(base + 2), '--data-port', str(base + 1),
-                   '--peer-spdp-port', str(peer), '--duration', str(duration), *extra]
+                   '--duration', str(duration), *extra]
         path = self.logs / (name + '.log')
         output = path.open('w', encoding='utf-8')
         try:
@@ -141,7 +141,7 @@ def run(h):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as occupied:
         if os.name == 'nt':
             occupied.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-        occupied.bind(('127.0.0.1', 17410))
+        occupied.bind((os.environ['MARINE_TEST_LOCAL'], 17410))
         publisher, _ = h.start('publisher', 'occupied-spdp', 2)
         require(publisher.wait(timeout=15) != 0, 'occupied SPDP port accepted')
     # Prove UDP ports are reusable after both finite duration and signal shutdown.
@@ -149,14 +149,18 @@ def run(h):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
             if os.name == 'nt':
                 probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-            probe.bind(('127.0.0.1', port))
+            probe.bind(('127.0.0.1' if port == 17300 else os.environ['MARINE_TEST_LOCAL'], port))
     print('failure modes / port reuse passed', flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--bin-dir', required=True, type=Path)
+    parser.add_argument('--local', default=os.environ.get('MARINE_TEST_LOCAL'), help='IPv4 de interfaz activa con multicast')
     args = parser.parse_args()
+    if not args.local:
+        parser.error('--local o MARINE_TEST_LOCAL es obligatorio')
+    os.environ['MARINE_TEST_LOCAL'] = args.local
     logs = Path(tempfile.mkdtemp(prefix='marine-opendds-tests-'))
     print('Logs:', logs, flush=True)
     h = Harness(args.bin_dir.resolve(), logs)
@@ -164,7 +168,7 @@ def main():
         run(h)
     finally:
         h.cleanup()
-    print('OpenDDS loopback integration passed', flush=True)
+    print('OpenDDS same-host multicast integration passed', flush=True)
 
 
 if __name__ == '__main__':

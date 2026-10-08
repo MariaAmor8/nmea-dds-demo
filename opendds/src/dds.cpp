@@ -75,6 +75,8 @@ Sample from_dds(const Marine::Navigation& n) {
   return s;
 }
 Session::Session(const Config& c) {
+  auto checked = c;
+  checked.validate_interface();
   try {
     config_path_ = std::filesystem::temp_directory_path() / ("marine-opendds-" +
       std::to_string(ACE_OS::getpid()) + "-" +
@@ -99,8 +101,8 @@ Session::Session(const Config& c) {
                                      nullptr, OpenDDS::DCPS::DEFAULT_STATUS_MASK);
     if (!topic) throw std::runtime_error("create_topic fallo");
     std::cout << "DDS Domain 0, Topic MarineNavigation, tipo Marine::Navigation, NoKey\n"
-              << "RTPS unicast: " << c.local << " SPDP=" << c.spdp_port << " SEDP=" << c.sedp_port
-              << " datos=" << c.data_port << " -> " << c.peer << ':' << c.peer_spdp_port << '\n';
+              << "SPDP multicast 239.255.0.1:7400 TTL=1 interfaz=" << checked.interface << " local=" << c.local << " SPDP=" << c.spdp_port << " SEDP=" << c.sedp_port
+              << " datos=" << c.data_port << '\n';
   } catch (...) { cleanup(); throw; }
 }
 void Session::cleanup() noexcept {

@@ -2,47 +2,34 @@ use rustdds::{
     policy::{History, Reliability},
     DomainParticipant, QosPolicies, QosPolicyBuilder,
 };
-use std::{
-    io::{BufRead, BufReader},
-    net::Ipv4Addr,
-    process::{Child, Command, Stdio},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
 };
 include!(concat!(env!("OUT_DIR"), "/navigation.rs"));
 pub mod nmea;
 pub const TOPIC: &str = "MarineNavigation";
 
 pub struct Config {
-    pub local: String,
-    pub peer: String,
     pub expected_id: u16,
-    pub peer_id: u16,
-    pub bridge: bool,
     pub source: String,
     pub nmea_listen: String,
 }
 impl Config {
     pub fn from_args() -> Self {
         let mut c = Self {
-            local: String::new(),
-            peer: String::new(),
             expected_id: 0,
-            peer_id: 0,
-            bridge: true,
             source: "synthetic".to_string(),
             nmea_listen: "127.0.0.1:3100".to_string(),
         };
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
             match arg.as_str() {
-                "--local" => c.local = args.next().expect("Falta IP local"),
-                "--peer" => c.peer = args.next().expect("Falta IP remota"),
+                "--help" | "-h" => {
+                    println!("Uso: publisher|subscriber [--expected-id N] [--source synthetic|nmea] [--nmea-listen IP:PUERTO]");
+                    std::process::exit(0);
+                }
                 "--expected-id" => c.expected_id = args.next().unwrap().parse().unwrap(),
-                "--peer-id" => c.peer_id = args.next().unwrap().parse().unwrap(),
-                "--no-bridge" => c.bridge = false,
                 "--source" => c.source = args.next().expect("Falta fuente"),
                 "--nmea-listen" => c.nmea_listen = args.next().expect("Falta endpoint NMEA"),
                 _ => panic!("Opcion desconocida: {arg}"),
@@ -51,70 +38,7 @@ impl Config {
                 panic!("Fuente invalida: usa --source synthetic o --source nmea");
             }
         }
-        if c.bridge {
-            c.local
-                .parse::<Ipv4Addr>()
-                .expect("Usa --local IP_LOCAL --peer IP_REMOTA");
-            c.peer
-                .parse::<Ipv4Addr>()
-                .expect("Usa --local IP_LOCAL --peer IP_REMOTA");
-        }
         c
-    }
-}
-pub struct Bridge {
-    child: Option<Child>,
-}
-impl Bridge {
-    pub fn start(c: &Config) -> Self {
-        if !c.bridge {
-            return Self { child: None };
-        }
-        let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../tools/rtps_unicast_bridge.py");
-        let mut child = Command::new("python3")
-            .arg(script)
-            .args([
-                "--local",
-                &c.local,
-                "--peer",
-                &c.peer,
-                "--peer-id",
-                &c.peer_id.to_string(),
-            ])
-            .stdout(Stdio::piped())
-            .spawn()
-            .expect("No se pudo iniciar el auxiliar RTPS");
-        let mut ready = String::new();
-        let mut reader = BufReader::new(child.stdout.take().unwrap());
-        reader
-            .read_line(&mut ready)
-            .expect("No se pudo leer el estado del auxiliar");
-        if ready.trim() != "READY" {
-            let _ = child.kill();
-            let _ = child.wait();
-            panic!("El auxiliar RTPS fallo. Revisa la IP local y los puertos 7400/7401.");
-        }
-        println!(
-            "Auxiliar RTPS preparado: {} -> {} (participant id {})",
-            c.local, c.peer, c.peer_id
-        );
-        Self { child: Some(child) }
-    }
-    pub fn check(&mut self) {
-        if let Some(child) = &mut self.child {
-            if let Some(status) = child.try_wait().expect("No se pudo revisar el auxiliar") {
-                panic!("El auxiliar RTPS termino: {status}");
-            }
-        }
-    }
-}
-impl Drop for Bridge {
-    fn drop(&mut self) {
-        if let Some(child) = &mut self.child {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
     }
 }
 pub fn running() -> Arc<AtomicBool> {
@@ -125,6 +49,9 @@ pub fn running() -> Arc<AtomicBool> {
 }
 pub fn participant(c: &Config) -> DomainParticipant {
     let p = DomainParticipant::new(0).expect("No se pudo crear el DomainParticipant");
+    println!(
+        "SPDP multicast nativo RustDDS: interfaces y sockets predeterminados de la biblioteca"
+    );
     assert_eq!(
         p.participant_id(),
         c.expected_id,

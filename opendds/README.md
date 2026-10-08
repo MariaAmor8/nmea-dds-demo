@@ -2,7 +2,7 @@
 
 Publicador C++ en **WSL2** y suscriptor C++ en **Ubuntu VMware**. Windows
 aloja WSL, ejecuta el simulador NMEA y administra el firewall. El flujo nativo
-Windows/MSVC se retiró. RustDDS conserva su implementación y sus instrucciones.
+Windows/MSVC se retiró. RustDDS tiene su propia implementación y guía.
 
 Las IP `192.168.10.15` (WSL) y `192.168.10.33` (MV) son ejemplos: sustituirlas
 por las direcciones verificadas en cada máquina y también en las reglas.
@@ -23,22 +23,19 @@ generados ni mantener otro IDL a mano.
 
 | Puerto UDP local | Función |
 | --- | --- |
-| 7410 | Descubrimiento de participantes, SPDP |
+| 7400, grupo 239.255.0.1 | Anuncios SPDP multicast, TTL 1 |
+| 7410 | SPDP unicast y respuestas |
 | 7412 | Descubrimiento de extremos, SEDP |
 | 7411 | Datos y confirmaciones RTPS/UDP |
 | 3100 en 127.0.0.1 | Entrada NMEA del simulador, solo publicador |
 
 La aplicación genera y elimina un INI temporal con las IP y puertos elegidos.
-Usa `SpdpSendAddrs` hacia el par, `SedpMulticast=0` y `use_multicast=0` para datos.
-No necesita DCPSInfoRepo ni `rtps_unicast_bridge.py`.
-
-**Detalle de OpenDDS 3.34.0:** `UndirectedSpdp=0` también desactiva los anuncios
-iniciales hacia `SpdpSendAddrs`. Por ello se mantiene `UndirectedSpdp=1` con
-`TTL=0`: el multicast SPDP queda limitado al host; el intercambio entre las
-máquinas usa UDP unicast. No se afirma que OpenDDS deje de crear sockets multicast
-locales. Esto corrige la propuesta inicial de desactivar todo multicast.
-`PeriodicDirectedSpdp=1` mantiene anuncios directos a participantes descubiertos.
-No se abre multicast entre máquinas en el firewall.
+Usa SPDP multicast nativo, `UndirectedSpdp=1`, `TTL=1` y `MulticastInterface`
+seleccionada por `--local`. No configura peers. Conserva `SedpMulticast=0` y
+`use_multicast=0`: SEDP y datos usan los locators unicast descubiertos.
+No necesita DCPSInfoRepo ni auxiliar Python. La IP local se valida contra las
+interfaces activas con multicast antes de inicializar DDS.
+Consultar [MULTICAST.md](../MULTICAST.md) para diagnóstico y límites de evaluación.
 
 Ejecutar las pruebas OpenDDS y RustDDS por separado: comparten dominio y algunos
 puertos. No hay traducción de NAT ni DDS Security en este demo.
@@ -158,19 +155,20 @@ New-NetFirewallHyperVRule `
   -DisplayName 'NMEA OpenDDS - VMware hacia WSL' `
   -Direction Inbound `
   -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' `
-  -Protocol UDP -LocalPorts '7410-7412' `
+  -Protocol UDP -LocalPorts '7400','7410-7412' `
   -RemoteAddresses '192.168.10.33' -Action Allow
 
 New-NetFirewallRule `
   -Name 'NMEA-OpenDDS-WSL-Windows' `
   -DisplayName 'NMEA OpenDDS - UDP desde VMware' `
-  -Direction Inbound -Protocol UDP -LocalPort '7410-7412' `
+  -Direction Inbound -Protocol UDP -LocalPort '7400','7410-7412' `
   -RemoteAddress '192.168.10.33' -Profile Any -Action Allow
 ```
 
 Si UFW está instalado y activo en la MV:
 
 ```bash
+sudo ufw allow from 192.168.10.15 to 239.255.0.1 port 7400 proto udp
 sudo ufw allow from 192.168.10.15 to any port 7410:7412 proto udp
 ```
 
@@ -216,13 +214,13 @@ En WSL con UFW activo, usar el origen `192.168.10.33` para esa misma regla.
 Primero en VMware, desde la raíz del repositorio:
 
 ```bash
-bash run.sh opendds subscriber --local 192.168.10.33 --peer 192.168.10.15
+bash run.sh opendds subscriber --local 192.168.10.33
 ```
 
 Después en WSL:
 
 ```bash
-bash run.sh opendds publisher --local 192.168.10.15 --peer 192.168.10.33 --source synthetic
+bash run.sh opendds publisher --local 192.168.10.15 --source synthetic
 ```
 
 `PUBLICADO` confirma aceptación local. `RECIBIDO DDS` en la MV demuestra entrega.
@@ -236,7 +234,7 @@ Configurar el simulador Windows para enviar **UDP** a `127.0.0.1:3100`. En WSL,
 terminar el publicador sintético y ejecutar:
 
 ```bash
-bash run.sh opendds publisher --local 192.168.10.15 --peer 192.168.10.33 \
+bash run.sh opendds publisher --local 192.168.10.15 \
   --source nmea --nmea-listen 127.0.0.1:3100
 ```
 
@@ -279,21 +277,21 @@ son distintas de DDS y del probe. No usar `netsh portproxy` para redirigir UDP.
 ## Pruebas y aceptación
 
 ```bash
-bash opendds/scripts/build.sh --integration-tests
+MARINE_TEST_LOCAL=192.168.10.15 bash opendds/scripts/build.sh --integration-tests
 ```
 
 CTest `sources` verifica GPRMC y configuración; `cdr` verifica todos los campos del
-tipo generado, ambas endianidades, cadenas y límites numéricos. `loopback` comprueba
+tipo generado, ambas endianidades, cadenas y límites numéricos. `multicast` comprueba localmente
 ambos órdenes de arranque, reinicio del lector, sintético, NMEA, rechazo sin consumo
 de secuencia, señales, IP inválida, puertos ocupados y reutilización tras el cierre.
 
 Para probar dos procesos manualmente en el mismo Linux, usar puertos distintos:
 
 ```bash
-bash run.sh opendds subscriber --local 127.0.0.1 --peer 127.0.0.1 \
-  --spdp-port 17510 --sedp-port 17512 --data-port 17511 --peer-spdp-port 17410 --duration 15
-bash run.sh opendds publisher --local 127.0.0.1 --peer 127.0.0.1 \
-  --spdp-port 17410 --sedp-port 17412 --data-port 17411 --peer-spdp-port 17510 --duration 12
+bash run.sh opendds subscriber --local 192.168.10.15 \
+  --spdp-port 17510 --sedp-port 17512 --data-port 17511 --duration 15
+bash run.sh opendds publisher --local 192.168.10.15 \
+  --spdp-port 17410 --sedp-port 17412 --data-port 17411 --duration 12
 ```
 
 Aceptación entre máquinas: compilar y pasar CTest en WSL y la MV; recibir datos
@@ -307,7 +305,7 @@ arquitectura, IP, comandos y logs. No confundir pruebas locales con esta aceptac
 En cada Linux:
 
 ```bash
-bash run.sh opendds publisher --local 192.168.10.15 --peer 192.168.10.33 --debug 4 --duration 30
+bash run.sh opendds publisher --local 192.168.10.15 --debug 4 --duration 30
 ss -lunp
 ldd opendds/build-linux/publisher
 sudo tcpdump -ni any 'udp and host 192.168.10.33 and portrange 7410-7412'

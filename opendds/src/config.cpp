@@ -2,6 +2,9 @@
 #include <sstream>
 #include <stdexcept>
 #include <vector>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <arpa/inet.h>
 
 namespace marine {
 namespace {
@@ -22,9 +25,9 @@ void ipv4(const std::string& s) {
 }
 std::string usage(bool publisher) {
   return std::string(publisher ? "publisher" : "subscriber") +
-    " --local IP --peer IP [--duration SEGUNDOS] [--debug NIVEL]" +
+    " --local IP [--duration SEGUNDOS] [--debug NIVEL]" +
     (publisher ? " [--source synthetic|nmea] [--nmea-listen IP:PUERTO]" : "") +
-    " [--spdp-port N --sedp-port N --data-port N --peer-spdp-port N]";
+    " [--spdp-port N --sedp-port N --data-port N]";
 }
 Config Config::parse(int argc, char* argv[], bool publisher) {
   Config c;
@@ -33,28 +36,43 @@ Config Config::parse(int argc, char* argv[], bool publisher) {
     if (i + 1 >= argc) throw std::runtime_error("falta valor para " + option);
     const std::string value = argv[++i];
     if (option == "--local") c.local = value;
-    else if (option == "--peer") c.peer = value;
     else if (option == "--source" && publisher) c.source = value;
     else if (option == "--nmea-listen" && publisher) c.nmea_listen = value;
     else if (option == "--spdp-port") c.spdp_port = integer(value, 65535);
     else if (option == "--sedp-port") c.sedp_port = integer(value, 65535);
     else if (option == "--data-port") c.data_port = integer(value, 65535);
-    else if (option == "--peer-spdp-port") c.peer_spdp_port = integer(value, 65535);
     else if (option == "--duration") c.duration = integer(value, 86400);
     else if (option == "--debug") c.debug = integer(value, 10);
     else throw std::runtime_error("opcion desconocida: " + option);
   }
-  if (c.local.empty() || c.peer.empty()) throw std::runtime_error("--local y --peer son obligatorios");
-  ipv4(c.local); ipv4(c.peer);
+  if (c.local.empty()) throw std::runtime_error("--local es obligatorio");
+  ipv4(c.local);
   if (c.source != "synthetic" && c.source != "nmea") throw std::runtime_error("fuente invalida");
   const auto colon = c.nmea_listen.find(':');
   if (colon == std::string::npos) throw std::runtime_error("--nmea-listen requiere IPv4:puerto");
   ipv4(c.nmea_listen.substr(0, colon));
   if (!integer(c.nmea_listen.substr(colon + 1), 65535)) throw std::runtime_error("puerto NMEA cero");
-  if (!c.spdp_port || !c.sedp_port || !c.data_port || !c.peer_spdp_port ||
+  if (!c.spdp_port || !c.sedp_port || !c.data_port ||
       c.spdp_port == c.sedp_port || c.spdp_port == c.data_port || c.sedp_port == c.data_port)
     throw std::runtime_error("puertos locales deben ser distintos y no cero");
   return c;
+}
+void Config::validate_interface() {
+  interface.clear();
+  ifaddrs* head = nullptr;
+  if (getifaddrs(&head)) throw std::runtime_error("no se pudo enumerar interfaces");
+  in_addr expected{};
+  inet_pton(AF_INET, local.c_str(), &expected);
+  for (auto* p = head; p; p = p->ifa_next) {
+    if (p->ifa_addr && p->ifa_addr->sa_family == AF_INET &&
+        reinterpret_cast<sockaddr_in*>(p->ifa_addr)->sin_addr.s_addr == expected.s_addr &&
+        (p->ifa_flags & (IFF_UP | IFF_MULTICAST)) == (IFF_UP | IFF_MULTICAST)) {
+      interface = p->ifa_name;
+      break;
+    }
+  }
+  freeifaddrs(head);
+  if (interface.empty()) throw std::runtime_error("--local no pertenece a una interfaz activa con multicast: " + local);
 }
 std::string Config::ini() const {
   std::ostringstream out;
@@ -62,10 +80,8 @@ std::string Config::ini() const {
       << "DCPSDefaultAddress=" << local << "\nDCPSDebugLevel=" << debug
       << "\n[rtps_discovery/marine_rtps]\nSpdpLocalAddress=" << local << ':' << spdp_port
       << "\nSedpLocalAddress=" << local << ':' << sedp_port
-      << "\nSpdpSendAddrs=" << peer << ':' << peer_spdp_port
-      // 3.34's undirected sender also sends to SpdpSendAddrs; disabling it
-      // prevents initial discovery. TTL=0 keeps its multicast on this host.
-      << "\nSedpMulticast=0\nTTL=0\nUndirectedSpdp=1\nPeriodicDirectedSpdp=1\nResendPeriod=1\n"
+      << "\nSpdpMulticastAddress=239.255.0.1:7400\nMulticastInterface=" << local
+      << "\nSedpMulticast=0\nTTL=1\nUndirectedSpdp=1\nPeriodicDirectedSpdp=1\nResendPeriod=1\n"
       << "[config/marine_transport]\ntransports=marine_udp\n"
       << "[transport/marine_udp]\ntransport_type=rtps_udp\nuse_multicast=0\nlocal_address="
       << local << ':' << data_port << '\n';

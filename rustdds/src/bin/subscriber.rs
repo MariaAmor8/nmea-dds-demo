@@ -5,7 +5,6 @@ fn main() {
     env_logger::init();
     let c = Config::from_args();
     let run = running();
-    let mut bridge = Bridge::start(&c);
     let dp = participant(&c);
     let q = qos();
     let topic = dp
@@ -23,7 +22,6 @@ fn main() {
     println!("Suscriptor listo. Esperando MarineNavigation. Ctrl+C para terminar.");
     let mut previous: Option<u32> = None;
     while run.load(Ordering::SeqCst) {
-        bridge.check();
         loop {
             match reader.take_next_sample() {
                 Ok(Some(sample)) => {

@@ -74,20 +74,30 @@ int main() {
             generated.position_valid && generated.heading_valid && generated.depth_valid, "synthetic flags");
     require(std::abs(generated.latitude_deg - 10.00012) < 1e-10 && generated.heading_deg == 14 &&
             std::abs(generated.depth_m - 8.4) < 1e-10 && generated.timestamp_ms > 0, "synthetic values");
-    const auto c = config({"test", "--local", "127.0.0.1", "--peer", "127.0.0.1",
-                           "--spdp-port", "17410", "--sedp-port", "17412", "--data-port", "17411", "--peer-spdp-port", "17510"});
-    require(c.ini().find("SpdpSendAddrs=127.0.0.1:17510") != std::string::npos &&
-            c.ini().find("TTL=0") != std::string::npos && c.ini().find("use_multicast=0") != std::string::npos, "RTPS configuration");
+    const auto c = config({"test", "--local", "127.0.0.1",
+                           "--spdp-port", "17410", "--sedp-port", "17412", "--data-port", "17411"});
+    require(c.ini().find("SpdpSendAddrs") == std::string::npos && c.ini().find("SpdpMulticastAddress=239.255.0.1:7400") != std::string::npos &&
+            c.ini().find("TTL=1") != std::string::npos && c.ini().find("use_multicast=0") != std::string::npos, "RTPS configuration");
     for (const auto& invalid : {"999.1.1.1", "1.2.3.", "1.2.3.4\ninject", "224.0.0.1"}) {
       bool rejected_config = false;
-      try { config({"test", "--local", invalid, "--peer", "127.0.0.1"}); }
+      try { config({"test", "--local", invalid}); }
       catch (const std::exception&) { rejected_config = true; }
       require(rejected_config, "invalid IP accepted");
     }
     bool duplicate = false;
-    try { config({"test", "--local", "127.0.0.1", "--peer", "127.0.0.1", "--data-port", "7410"}); }
+    try { config({"test", "--local", "127.0.0.1", "--data-port", "7410"}); }
     catch (const std::exception&) { duplicate = true; }
     require(duplicate, "duplicate port accepted");
+    for (const auto& flag : {"--peer", "--peer-spdp-port"}) {
+      bool rejected = false;
+      try { config({"test", "--local", "127.0.0.1", flag, "7410"}); }
+      catch (const std::exception&) { rejected = true; }
+      require(rejected, "retired argument accepted");
+    }
+    auto missing = config({"test", "--local", "192.0.2.123"});
+    bool missing_rejected = false;
+    try { missing.validate_interface(); } catch (const std::exception&) { missing_rejected = true; }
+    require(missing_rejected, "nonlocal interface accepted");
     std::cout << "Source/config tests passed\n";
     return 0;
   } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

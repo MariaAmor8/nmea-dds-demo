@@ -10,7 +10,6 @@ fn main() {
     env_logger::init();
     let c = Config::from_args();
     let run = running();
-    let mut bridge = Bridge::start(&c);
     let dp = participant(&c);
     let q = qos();
     let topic = dp
@@ -37,7 +36,6 @@ fn main() {
     let mut n: u32 = 0;
     let mut next = Instant::now();
     while run.load(Ordering::SeqCst) {
-        bridge.check();
         while let Some(event) = writer.try_recv_status() {
             println!("DDS writer: {event:?}");
         }

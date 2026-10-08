@@ -48,8 +48,8 @@ if(BUILD_TESTING)
   option(MARINE_INTEGRATION_TESTS "Run local UDP integration tests (requires working sockets)" OFF)
   if(MARINE_INTEGRATION_TESTS)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
-    add_test(NAME loopback COMMAND "${Python3_EXECUTABLE}"
+    add_test(NAME multicast COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py" --bin-dir "$<TARGET_FILE_DIR:publisher>")
-    set_tests_properties(loopback PROPERTIES TIMEOUT 120)
+    set_tests_properties(multicast PROPERTIES TIMEOUT 120)
   endif()
 endif()
