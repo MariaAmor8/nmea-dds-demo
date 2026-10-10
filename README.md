@@ -1,332 +1,84 @@
-# NMEA DDS demo — RustDDS y OpenDDS
+# NMEA DDS demo: RustDDS y OpenDDS
 
-## Alcance y estado
+## ¿De qué trata el proyecto?
 
-Un solo proyecto, un solo IDL y dos implementaciones que se prueban por separado:
+Demo de publicación y suscripción de datos de navegación mediante DDS (Data Distribution Service). Es **el mismo programa implementado en dos frameworks**: RustDDS **0.11.2** (Rust, Atostek) y OpenDDS **3.34.0** (C++). Cada implementación tiene un publicador y un suscriptor y utiliza el mismo contrato [Navigation.idl](idl/Navigation.idl).
 
-- RustDDS de Atostek: publicador WSL -> suscriptor Ubuntu VMware.
-- OpenDDS 3.34.0: publicador WSL2 -> suscriptor Ubuntu VMware.
+La fuente sintética produce aproximadamente una muestra por segundo con secuencia, timestamp, posición, velocidad en nudos, rumbo y profundidad. Sirve para comprobar el transporte; no representa un recorrido físico coherente. También existe entrada GPRMC por UDP, descrita como capacidad en las guías de implementación.
 
-Ambas ofrecen datos sintéticos a 1 Hz y entrada GPRMC por UDP. El contrato
-compartido es `idl/Navigation.idl`; no se exige interoperabilidad entre DDS.
-Para instalar, compilar y ejecutar OpenDDS, seguir [opendds/README.md](opendds/README.md).
-Las secciones 1–6 siguientes describen el flujo RustDDS existente.
-El estado de pruebas de OpenDDS está en [opendds/VALIDATION.md](opendds/VALIDATION.md).
+## Arquitectura
 
-La validación actual de RustDDS original está en [RUSTDDS_NATIVE_VALIDATION.md](RUSTDDS_NATIVE_VALIDATION.md).
-Los resultados anteriores del parche se conservan como históricos en [MULTICAST_VALIDATION.md](MULTICAST_VALIDATION.md).
-
-Se fija RustDDS 0.11.2, cuya API se inspeccionó; no es una afirmación de que sea
-la versión más reciente. Cargo.lock fija las dependencias. Ejecutar --locked.
-
-## Arquitectura RustDDS
-
-WSL 192.168.10.15: generador secuencial -> DataWriter RustDDS.
-VM 192.168.10.33: DataReader RustDDS -> consola.
-
-Domain 0; Topic MarineNavigation; tipo Marine::Navigation; NoKey;
-Reliability Reliable; History KeepLast(10). Una instancia de participante por
-OS, con participant id 0. No ejecutar simultáneamente otros demos en domain 0.
-
-Ambos hosts pueden ejecutar cualquiera de los roles. La validación remota se limita
-a publicador WSL → suscriptor VMware; no se prueban roles invertidos.
-
-SPDP descubre participantes automáticamente por `239.255.0.1:7400`.
-Se usa RustDDS 0.11.2 original de crates.io, sin copia ni parche local. La biblioteca
-enumera sus interfaces y configura sockets, TTL y locators con su comportamiento
-nativo; el demo no selecciona ni limita una interfaz. No acepta `--local`.
-No se usa un puente Python ni se configura una IP remota. SEDP y datos conservan
-la política nativa, con UDP 7401 multicast y 7410/7411 unicast (participante 0).
-DDS Reliable requiere tráfico de control/ACK de vuelta aunque las muestras fluyan
-únicamente WSL → VM. No hay reescritura de NAT ni DDS Security.
-
-La guía [MULTICAST.md](MULTICAST.md) contiene firewall, capturas y comandos de
-aceptación con las IP actuales; la recepción en la VM requiere evidencia del usuario.
-
-## Archivos
-
-- idl/Navigation.idl: fuente única de tipos.
-- tools/idl_to_rust.py: generador limitado, invocado por build.rs.
-- rustdds/src/lib.rs: configuración del demo y generador de muestras.
-- rustdds/src/bin/publisher.rs: DataWriter.
-- rustdds/src/bin/subscriber.rs: DataReader y comprobación de secuencia.
-- tools/udp_probe.py: diagnóstico unicast con ACK, puerto 17400.
-- run.sh: selector de implementación y rol para Linux.
-- opendds/: publicador/suscriptor C++, CMake, fuentes, pruebas y scripts Bash para WSL/Ubuntu.
-
-El generador Rust admite un module, un @topic struct sin clave y los tipos unsigned
-long, unsigned long long, long, double, boolean y string. Rechaza sintaxis distinta.
-No es un compilador IDL general. Los tipos Rust se generan dentro de target/;
-no se mantienen manualmente en paralelo con el IDL.
-
-## 1. Preparación en WSL y MV
-
-Mantener WSL mirrored y VMware Bridged. Confirmar las IP actuales con:
-
-```bash
-ip -br -4 addr
+```mermaid
+flowchart LR
+    subgraph A[MV A · Ubuntu]
+        F[Fuente sintética a 1 Hz] --> P[Publicador · DataWriter]
+    end
+    subgraph B[MV B · Ubuntu]
+        S[Suscriptor · DataReader] --> C[Consola]
+    end
+    P -->|Muestras · RTPS sobre UDP| S
+    S -->|Control y confirmaciones · UDP| P
+    M[SPDP multicast · 239.255.0.1:7400]
+    P <-->|Descubrimiento| M
+    S <-->|Descubrimiento| M
 ```
 
-En AMBOS Ubuntu:
+El descubrimiento SPDP anuncia participantes; SEDP descubre los extremos compatibles. Después, el lector recibe las muestras del escritor. Reliable necesita tráfico de retorno incluso cuando las muestras fluyen en una sola dirección. No se configura una IP remota ni un servidor central de descubrimiento.
+
+Los roles pueden intercambiarse: MV A puede ser suscriptora y MV B publicadora. Ejecutar **una implementación a la vez**, usando el mismo DDS en ambos extremos y un participante por MV. No se ha validado interoperabilidad RustDDS↔OpenDDS.
+
+Contrato común: dominio **0**, tópico **MarineNavigation**, tipo **Marine::Navigation**, sin clave (**NoKey**). RustDDS enumera interfaces automáticamente; OpenDDS selecciona una IP local mediante `--local`. El transporte es RTPS/UDP; el detalle de multicast/unicast y puertos está en [MULTICAST.md](MULTICAST.md).
+
+## QoS utilizadas y alcance de las pruebas
+
+| Política | Valor | RustDDS | OpenDDS |
+| --- | --- | --- | --- |
+| Reliability | Reliable | Explícita | Explícita en escritor y lector |
+| Máximo bloqueo de escritura | 1 segundo | Explícito | Explícito |
+| History | KeepLast, profundidad 10 | Explícita | Explícita en escritor y lector |
+| Durability | Volatile | Comportamiento predeterminado; no se establece en el builder | Explícita en escritor y lector |
+
+KeepLast(10) limita el historial, no garantiza reproducir diez muestras a un lector nuevo. Volatile no promete recuperar muestras anteriores a la asociación. La primera secuencia recibida puede ser mayor que uno. No hay opciones CLI para cambiar estas QoS.
+
+**Prueba reportada por el usuario:** dos MV Ubuntu **26.04.1 LTS**, en el mismo equipo físico, con VMware **Bridged** y selección explícita del adaptador físico de Internet en el editor de red virtual (Intel(R) WiFi en el equipo probado). RustDDS y OpenDDS recibieron muestras sintéticas por separado; al invertir publicador y suscriptor, ambas MV recibieron correctamente.
+
+Esta prueba confirma descubrimiento y entrega sintética en ambos sentidos. No confirma NMEA, reinicios, duración específica, capturas, tolerancia a pérdidas ni recuperación del historial. Los tests locales tampoco sustituyen una prueba entre MV. Los timestamps no miden latencia sin sincronización de relojes. El demo no configura DDS Security ni traducción de NAT.
+
+## Descargar y elegir una guía
+
+En **ambas MV**, trabajar en el sistema de archivos Ubuntu, recomendado `~/projects/nmea-dds-demo`. Se necesita Internet para descargar herramientas y dependencias:
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential pkg-config python3 git curl ca-certificates unzip
-rustc --version
-cargo --version
+sudo apt install -y git ca-certificates
+mkdir -p "$HOME/projects"
+cd "$HOME/projects"
+git clone --branch feature/multicast-discovery https://github.com/MariaAmor8/nmea-dds-demo.git
+cd nmea-dds-demo
+git branch --show-current
 ```
 
-Solo si Rust/Cargo no existen, instalar en ese Ubuntu:
+Resultado esperado: la rama indicada es `feature/multicast-discovery`. Compilar independientemente en cada MV; no copiar binarios, `target/` ni cachés CMake. No se necesita un editor instalado ni usar sudo para compilar o ejecutar.
 
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
-```
+Continuar con [guía RustDDS](rustdds/README.md) o [guía OpenDDS](opendds/README.md). Ambas empiezan desde este clon y explican instalación, red, compilación, ejecución y resultados. Para actualizar posteriormente, con el trabajo local guardado, usar `git pull --ff-only` en cada clon.
 
-Seleccionar la instalación estándar (opción 1).
+## Estructura general
 
-Descargar el ZIP de esta entrega en ~/Downloads en cada Ubuntu. En WSL también
-puedes usar el ZIP descargado por Windows bajo /mnt/c/Users/TU_USUARIO/Downloads.
-Copiar el ZIP a la MV es suficiente; no copiar target/ ni binarios de Windows.
-En cada Ubuntu:
+| Ubicación | Función |
+| --- | --- |
+| `idl/` | Contrato único de navegación |
+| `rustdds/` | Aplicaciones Rust, parser NMEA y pruebas |
+| `opendds/` | Aplicaciones C++, CMake, scripts de entorno/build y pruebas |
+| `tools/` | Generador Rust desde IDL, diagnóstico UDP y observador SPDP |
+| `run.sh` | Selector de implementación y rol desde Bash |
+| `Cargo.toml`, `Cargo.lock` | Workspace y dependencias Rust fijadas |
+| `target/`, `opendds/build-linux/` | Artefactos generados, excluidos de Git |
 
-```bash
-mkdir -p ~/projects
-unzip ~/Downloads/nmea-dds-demo.zip -d ~/projects
-cd ~/projects/nmea-dds-demo
-cargo build --locked --workspace --bins
-cargo test --locked --workspace
-```
+Rust genera tipos durante el build mediante Python; el generador admite el subconjunto IDL de este proyecto, no es un compilador general. OpenDDS genera C++ desde una entrada adaptada automáticamente por CMake para el miembro `sequence`, sin modificar el contrato compartido. No editar tipos generados ni mantener otro IDL manualmente.
 
-Si usas el ZIP de Windows en WSL, reemplaza SOLO la ruta del ZIP en unzip.
-No necesitas VS Code instalado en la MV para compilar y ejecutar.
+Usar `logs/`, `captures/`, `results/` y `tmp/` para artefactos locales: están ignorados por Git. No compartir credenciales ni rutas personales.
 
-## 2. Prueba de retorno unicast
+## Referencias
 
-Cerrar los scripts anteriores de prueba, para liberar UDP 17400.
-En la MV, desde la raíz del proyecto:
-
-```bash
-python3 tools/udp_probe.py listen --local 192.168.10.33
-```
-
-Mientras espera, en WSL:
-
-```bash
-python3 tools/udp_probe.py send --local 192.168.10.15 --peer 192.168.10.33
-```
-
-WSL debe imprimir OK: UDP unicast funciona en ambos sentidos.
-La MV responde y termina. El probe no usa DDS. Las reglas Windows de la prueba
-anterior ya cubren 17400 desde 192.168.10.33. Si aparece TIMEOUT, resolver el
-retorno unicast antes de esperar comunicación DDS.
-
-## 3. Firewall DDS en Windows
-
-PowerShell COMO ADMINISTRADOR, fuera de WSL. Ejecutar una sola vez:
-
-```powershell
-New-NetFirewallHyperVRule `
-    -Name "NMEA-Demo-DDS-Unicast" `
-    -DisplayName "NMEA DDS - UDP desde VMware hacia WSL" `
-    -Direction Inbound `
-    -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' `
-    -Protocol UDP `
-    -LocalPorts "7400-7401","7410-7411" `
-    -RemoteAddresses "192.168.10.33" `
-    -Action Allow
-
-New-NetFirewallRule `
-    -Name "NMEA-Demo-DDS-Unicast-Windows" `
-    -DisplayName "NMEA DDS - UDP desde VMware" `
-    -Direction Inbound `
-    -Protocol UDP `
-    -LocalPort "7400-7401","7410-7411" `
-    -RemoteAddress "192.168.10.33" `
-    -Profile Any `
-    -Action Allow
-```
-
-Si la IP de la MV cambia, actualizar también el origen de estas reglas.
-No desactivar el firewall. Las reglas anteriores de puerto 17400 no cubren DDS.
-Si la MV tiene UFW instalado y activo, ejecutar EN LA MV:
-
-```bash
-sudo ufw allow from 192.168.10.15 to 239.255.0.1 port 7400:7401 proto udp
-sudo ufw allow from 192.168.10.15 to any port 7410:7411 proto udp
-```
-
-No es necesario instalar UFW si no está instalado.
-
-## 4. Ejecutar
-
-Primero EN LA MV, desde ~/projects/nmea-dds-demo:
-
-```bash
-bash run.sh rustdds subscriber
-```
-
-Después EN WSL, desde la misma ruta del proyecto:
-
-```bash
-bash run.sh rustdds publisher
-```
-
-El participante usa multicast nativo, sin auxiliar.
-Puede haber varios segundos de espera (los anuncios de participante son periódicos).
-Esperar hasta 30 segundos antes de diagnosticar. PUBLICADO solo confirma que
-RustDDS aceptó la muestra; la evidencia de entrega es RECIBIDO en la MV.
-PublicationMatched en el publicador confirma asociación con un lector.
-
-Ejemplo de recepción:
-
-```
-RECIBIDO seq=12 lat=10.00012 lon=-75.00012 speed=5.2 kn course=12.0 heading=14.0 depth=8.4 m simulated=true
-```
-
-La primera secuencia recibida puede no ser 1 porque la asociación tarda y la
-durabilidad es volátil. Los saltos posteriores se informan en consola.
-Estas muestras no representan un recorrido físico coherente: prueban el transporte.
-Los timestamps no deben usarse como medida de latencia sin sincronizar relojes.
-
-Mantener la prueba un minuto. Ctrl+C termina el ejecutable.
-Para repetir, iniciar de nuevo el suscriptor y el publicador.
-
-## 5. Si no recibe
-
-- Revisar las interfaces enumeradas por RustDDS y acceso multicast UDP 7400; el demo no selecciona interfaces.
-- Participant id inesperado: cerrar otros demos domain 0. Se espera id 0 en cada OS.
-- Revisar [diagnóstico multicast](MULTICAST.md); no invertir los roles entre hosts.
-- Captura EN WSL mientras ejecutas el demo:
-
-```bash
-sudo tcpdump -ni any 'udp and src host 192.168.10.33 and (dst port 7410 or dst port 7411)'
-```
-
-- Captura EN LA MV:
-
-```bash
-sudo tcpdump -ni any 'udp and src host 192.168.10.15 and (dst port 7410 or dst port 7411)'
-```
-
-- Diagnóstico Rust:
-
-```bash
-RUST_LOG=info bash run.sh rustdds publisher
-```
-
-Guardar las salidas de ambas consolas si falla. No confundir el éxito de compilación
-con el éxito de comunicación. DDS requiere tráfico de control de vuelta.
-
-## 6. Un único repositorio GitHub
-
-Se puede empezar sin GitHub. Cuando la prueba funcione, crear en GitHub un
-repositorio vacío nmea-dds-demo (sin README inicial). En WSL, raíz del proyecto:
-
-```bash
-git init
-git add .
-git commit -m "Add sequential RustDDS demo with shared IDL"
-git branch -M main
-git remote add origin https://github.com/TU_USUARIO/nmea-dds-demo.git
-git push -u origin main
-```
-
-Reemplazar TU_USUARIO. Autenticarse por el mecanismo habitual de GitHub; no usar
-la contraseña de la cuenta como contraseña HTTPS. Si Git pide identidad, configurar
-user.name y user.email con los datos del usuario. En la MV se podrá clonar ese mismo
-repositorio y usar git pull para las siguientes etapas. No crear otro repositorio
-para OpenDDS.
-
-## 7. Demo OpenDDS
-
-OpenDDS genera sus tipos C++ directamente desde el mismo IDL. Conserva dominio 0,
-tópico MarineNavigation, NoKey, Reliable y KeepLast(10). Descubre participantes por SPDP multicast; SEDP y datos usan RTPS unicast.
-
-Primero en Ubuntu VMware, tras compilar y cargar el entorno OpenDDS:
-
-```bash
-bash run.sh opendds subscriber --local 192.168.10.33
-```
-
-Después en WSL, desde la raíz del repositorio:
-
-```bash
-bash opendds/scripts/build.sh --test
-bash run.sh opendds publisher --local 192.168.10.15 --source synthetic
-# Simulador Windows enviando UDP hacia WSL mirrored:
-bash run.sh opendds publisher --local 192.168.10.15 --source nmea --nmea-listen 127.0.0.1:3100
-```
-
-Ejecutar una sola prueba DDS a la vez. OpenDDS añade UDP 7412 para SEDP;
-la guía OpenDDS describe las reglas Windows/Hyper-V y la preparación de ambas
-instalaciones Linux. Las IP son ejemplos y deben verificarse en cada máquina.
-`PUBLICADO` indica aceptación local; `RECIBIDO DDS` en la MV demuestra entrega.
-La validación WSL→VMware y Windows→WSL→VMware requiere pruebas reales en las
-máquinas del usuario. El soporte Windows nativo/MSVC se retiró.
-
-## 8. Fuente GPS GPRMC por UDP
-
-El publicador RustDDS puede recibir sentencias GPRMC desde un simulador que envía
-datagramas UDP. El flujo es:
-
-```text
-simulador Windows -> UDP 127.0.0.1:3100 en WSL -> publicador RustDDS -> DDS -> suscriptor
-```
-
-Iniciar el suscriptor en la MV como siempre y, en WSL, ejecutar:
-
-```bash
-bash run.sh rustdds publisher \
-  \
-  --source nmea \
-  --nmea-listen 127.0.0.1:3100
-```
-
-El publicador acepta líneas que contengan una sentencia `$GPRMC`, incluso si
-incluyen un prefijo como `GPS1 on UDP2:`. Valida el checksum NMEA, convierte
-latitud y longitud a grados decimales, conserva velocidad en nudos y publica
-el rumbo sobre el suelo en `course_deg`. Las sentencias rechazadas se informan
-en la consola y no se publican.
-
-La muestra DDS conserva también la sentencia completa en `raw_nmea`. El
-publicador imprime la línea recibida del simulador antes de publicar y el
-suscriptor imprime esa misma línea al recibirla, además de un resumen de los
-campos parseados. Esto permite comparar directamente ambos extremos.
-
-GPRMC no contiene rumbo verdadero ni profundidad. Por ello `heading_valid` y
-`depth_valid` se publican como `false`, con valores numéricos `0.0`; el
-suscriptor los muestra como `N/D`. `position_valid` refleja el estado `A` o
-`V` de GPRMC y `simulated=false` identifica datos recibidos desde esta fuente.
-La secuencia DDS solo avanza para muestras GPRMC válidas.
-
-El publicador queda escuchando datagramas UDP; no requiere una conexión persistente
-ni una fase de reconexión. Cada datagrama puede contener una o varias líneas.
-El modo sintético original sigue disponible para diagnóstico:
-
-```bash
-bash run.sh rustdds publisher \
-  \
-  --source synthetic
-```
-
-## 9. Archivos locales y Git
-
-`.gitignore` excluye compilaciones, binarios, cachés, entornos virtuales y estado
-personal de editores. Para guardar artefactos locales dentro del repositorio,
-usar `logs/` para registros, `results/` para resultados, `captures/` para capturas
-y `tmp/` para temporales. Estas carpetas están ignoradas; los procesos existentes
-mantienen sus ubicaciones actuales de salida.
-
-Los CSV de ejemplo o fixtures pueden compartirse fuera de esas carpetas, por
-ejemplo en `examples/` o `tests/fixtures/`. Se conservan las fuentes, el IDL, las
-plantillas, los scripts, los archivos CMake fuente, la documentación y `Cargo.lock`.
-`.vscode/`, `.agents/` y `.codex/` no se excluyen globalmente: revisar su contenido
-antes de añadirlo para compartir solo configuraciones e instrucciones útiles,
-sin rutas personales ni credenciales. `.aws/`, `.env` y `.env.*` están excluidos;
-`.env.example` puede versionarse si contiene únicamente valores de ejemplo.
-
-Fuentes: RustDDS 0.11.2, código del paquete publicado y ejemplos oficiales;
-https://github.com/Atostek/RustDDS ; https://docs.rs/rustdds/0.11.2/ .
-Configuración WSL/firewall:
-https://learn.microsoft.com/en-us/windows/wsl/networking .
+- [RustDDS 0.11.2](https://docs.rs/rustdds/0.11.2/) y [repositorio oficial](https://github.com/Atostek/RustDDS).
+- [OpenDDS 3.34.0](https://github.com/OpenDDS/OpenDDS/releases/tag/v3.34.0) y [guía oficial de compilación](https://opendds.readthedocs.io/en/latest-release/devguide/building/index.html).
