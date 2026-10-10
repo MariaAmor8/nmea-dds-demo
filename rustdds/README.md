@@ -1,6 +1,6 @@
 # Guía RustDDS: Ubuntu MV → Ubuntu MV
 
-Implementación Rust del [demo común](../README.md), con RustDDS **0.11.2 original de crates.io**, sin parche local. Ejecutar estos pasos en ambas MV salvo que se indique un rol. Se parte del clon en `~/projects/nmea-dds-demo`; para descargarlo seguir el README raíz.
+Implementación Rust del [demo común](../README.md), con RustDDS **0.14.3 original de crates.io**, sin parche local. Ejecutar estos pasos en ambas MV salvo que se indique un rol. Se parte del clon en `~/projects/nmea-dds-demo`; para descargarlo seguir el README raíz.
 
 ## 1. Instalar y comprobar herramientas (ambas MV)
 
@@ -25,7 +25,7 @@ python3 --version
 cc --version
 ```
 
-Resultado esperado: todas las herramientas imprimen su versión. Si Cargo no se encuentra, cargar `"$HOME/.cargo/env"` en esa terminal. `rustdds/build.rs` ejecuta automáticamente `tools/idl_to_rust.py` para generar los tipos desde el IDL durante la compilación cuando corresponde; Python no es opcional. Cargo.lock fija dependencias y los comandos usan `--locked`.
+Resultado esperado: todas las herramientas imprimen su versión; Rust/Cargo deben ser **1.88.0 o posteriores**, mínimo requerido por RustDDS y las dependencias resueltas para Ubuntu x86_64. Si Rust es anterior, ejecutar `rustup update stable`. Si Cargo no se encuentra, cargar `"$HOME/.cargo/env"` en esa terminal. `rustdds/build.rs` ejecuta automáticamente `tools/idl_to_rust.py` para generar los tipos desde el IDL durante la compilación cuando corresponde; Python no es opcional. Cargo.lock fija dependencias y los comandos usan `--locked`.
 
 ## 2. Preparar la red (ambas MV)
 
@@ -34,7 +34,7 @@ Seguir [pasos 1–3 de MULTICAST.md](../MULTICAST.md): VMware Bridged con adapta
 | Protocolo/puerto | Función |
 | --- | --- |
 | UDP `239.255.0.1:7400` | Descubrimiento SPDP |
-| UDP multicast `7401` | Según política nativa RustDDS |
+| UDP multicast `239.255.0.1:7401` | Socket de recepción de datos multicast nativo |
 | UDP unicast `7410/7411` | Descubrimiento y datos/control para participante 0 |
 | UDP `127.0.0.1:3100` | Entrada NMEA opcional, no usada en la prueba sintética |
 
@@ -48,7 +48,7 @@ cargo build --locked -p marine-rustdds --bins
 cargo test --locked -p marine-rustdds
 ```
 
-Resultado esperado: compilación finalizada sin errores y pruebas GPRMC/checksum y CDR aprobadas. Los ejecutables quedan en `target/debug/`; los tipos generados quedan en `target/`. No copiar artefactos entre MV.
+Resultado esperado: compilación finalizada sin errores y pruebas GPRMC/checksum y CDR aprobadas. La prueba CDR utiliza la representación anunciada por el serializador y comprueba todos los campos, texto NMEA/UTF-8 y las 16 combinaciones de booleanos. Los ejecutables quedan en `target/debug/`; los tipos generados quedan en `target/`. No copiar artefactos entre MV.
 
 Opcionalmente, sin otros demos activos:
 
@@ -57,6 +57,8 @@ python3 rustdds/tests/multicast.py
 ```
 
 `rustdds/tests/multicast.py` arranca los ejecutables y revisa sus logs; las muestras DDS no pasan por el script. La integración local verifica asociación, ambos órdenes de inicio, entrega, reasociación y NMEA válido/inválido. Debe terminar con código cero. Ejecuta procesos en la misma MV y no valida la red entre MV.
+
+**Validación local de RustDDS 0.14.3 (10 de octubre de 2026):** compilación de ambos binarios con `--locked`, las tres pruebas NMEA/CDR e integración local aprobadas con Rust 1.99.0 en Linux x86_64. La integración comprobó ambos órdenes de inicio, reasociación, entrega secuencial, NMEA válido/inválido y cierre con Ctrl+C. El mínimo declarado de Rust 1.88.0 se verificó mediante los requisitos de las dependencias; no se ejecutó con ese toolchain.
 
 ## 4. Ejecutar la fuente sintética
 
@@ -91,7 +93,7 @@ PARSEADO: seq=12 lat=10.00012 lon=-75.00012 speed=5.2 kn course=12.0 heading=14.
 
 El texto después de `RECIBIDO DDS:` está vacío porque la fuente sintética no contiene NMEA original. `PUBLICADO DDS` confirma aceptación local; `RECIBIDO DDS` y `PARSEADO` en la otra MV confirman entrega. Esperar hasta 30 segundos antes de diagnosticar la asociación. La primera secuencia puede no ser uno; los saltos posteriores se indican mediante `SALTO secuencia`.
 
-Para una comprobación nueva, observar un minuto de recepción; esta duración es una recomendación, no una duración confirmada de la prueba reportada. Detener ambos procesos con Ctrl+C. **Invertir los roles** ejecutando el comando subscriber en MV A y publisher en MV B. El usuario reportó recepción sintética exitosa en ambos sentidos.
+Para una comprobación nueva, observar un minuto de recepción; esta duración es una recomendación, no una duración confirmada de la prueba reportada. Detener ambos procesos con Ctrl+C. **Invertir los roles** ejecutando el comando subscriber en MV A y publisher en MV B. El usuario reportó recepción sintética exitosa en ambos sentidos con RustDDS **0.11.2**. Ese resultado no valida **0.14.3**: la nueva prueba entre MV está **pendiente**. Usar **0.14.3 en ambas MV**, observar un minuto de recepción en cada sentido y guardar versiones, comandos y logs. Confirmar recepción continua después de la asociación, sin errores de publicación ni saltos posteriores de secuencia.
 
 ## 5. Opciones y capacidades
 

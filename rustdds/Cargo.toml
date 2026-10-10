@@ -2,12 +2,11 @@
 name = "marine-rustdds"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.88.0"
 build = "build.rs"
 
 [dependencies]
-rustdds = "=0.11.2"
+rustdds = "=0.14.3"
 serde = { version = "1", features = ["derive"] }
 ctrlc = "3.4"
 env_logger = "0.11"
-# Unifica la feature time requerida por las opciones de socket de rustix 1.x.
-rustix = { version = "1", features = ["time"] }

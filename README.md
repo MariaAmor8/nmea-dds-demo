@@ -2,9 +2,11 @@
 
 ## ¿De qué trata el proyecto?
 
-Demo de publicación y suscripción de datos de navegación mediante DDS (Data Distribution Service). Es **el mismo programa implementado en dos frameworks**: RustDDS **0.11.2** (Rust, Atostek) y OpenDDS **3.34.0** (C++). Cada implementación tiene un publicador y un suscriptor y utiliza el mismo contrato [Navigation.idl](idl/Navigation.idl).
+Demo de publicación y suscripción de datos de navegación mediante DDS (Data Distribution Service). Es **el mismo programa implementado en dos frameworks**: RustDDS **0.14.3** (Rust, Atostek) y OpenDDS **3.34.0** (C++). Cada implementación tiene un publicador y un suscriptor y utiliza el mismo contrato [Navigation.idl](idl/Navigation.idl).
 
 La fuente sintética produce aproximadamente una muestra por segundo con secuencia, timestamp, posición, velocidad en nudos, rumbo y profundidad. Sirve para comprobar el transporte; no representa un recorrido físico coherente. También existe entrada GPRMC por UDP, descrita como capacidad en las guías de implementación.
+
+RustDDS requiere Rust **1.88.0 o posterior**. La validación entre MV con RustDDS **0.14.3** está pendiente; ambos extremos deben utilizar esta versión. Las pruebas y el procedimiento de verificación están en la [guía RustDDS](rustdds/README.md).
 
 ## Arquitectura
 
@@ -40,7 +42,7 @@ Contrato común: dominio **0**, tópico **MarineNavigation**, tipo **Marine::Nav
 
 KeepLast(10) limita el historial, no garantiza reproducir diez muestras a un lector nuevo. Volatile no promete recuperar muestras anteriores a la asociación. La primera secuencia recibida puede ser mayor que uno. No hay opciones CLI para cambiar estas QoS.
 
-**Prueba reportada por el usuario:** dos MV Ubuntu **26.04.1 LTS**, en el mismo equipo físico, con VMware **Bridged** y selección explícita del adaptador físico de Internet en el editor de red virtual (Intel(R) WiFi en el equipo probado). RustDDS y OpenDDS recibieron muestras sintéticas por separado; al invertir publicador y suscriptor, ambas MV recibieron correctamente.
+**Prueba reportada por el usuario:** dos MV Ubuntu **26.04.1 LTS**, en el mismo equipo físico, con VMware **Bridged** y selección explícita del adaptador físico de Internet en el editor de red virtual (Intel(R) WiFi en el equipo probado). RustDDS **0.11.2** y OpenDDS recibieron muestras sintéticas por separado; al invertir publicador y suscriptor, ambas MV recibieron correctamente.
 
 La prueba OpenDDS correspondía a la configuración anterior con selección explícita de IP; no valida el nuevo modo automático. La aceptación del modo automático entre MV queda pendiente de comprobar asociación, recepción sintética e inversión de roles. La prueba anterior confirma descubrimiento y entrega sintética en ambos sentidos para las configuraciones utilizadas entonces. No confirma NMEA, reinicios, duración específica, capturas, tolerancia a pérdidas ni recuperación del historial. Los tests locales tampoco sustituyen una prueba entre MV. Los timestamps no miden latencia sin sincronización de relojes. El demo no configura DDS Security ni traducción de NAT.
 
@@ -101,5 +103,5 @@ Resultado esperado: pruebas aprobadas. Observar anuncios SPDP o aprobar pruebas 
 
 ## Referencias
 
-- [RustDDS 0.11.2](https://docs.rs/rustdds/0.11.2/) y [repositorio oficial](https://github.com/Atostek/RustDDS).
+- [RustDDS 0.14.3](https://docs.rs/rustdds/0.14.3/) y [repositorio oficial](https://github.com/Atostek/RustDDS).
 - [OpenDDS 3.34.0](https://github.com/OpenDDS/OpenDDS/releases/tag/v3.34.0) y [guía oficial de compilación](https://opendds.readthedocs.io/en/latest-release/devguide/building/index.html).

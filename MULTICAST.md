@@ -29,12 +29,12 @@ En la otra MV los valores local/remoto se intercambian. Son variables auxiliares
 
 | Implementación, dominio 0 | UDP multicast | UDP unicast local |
 | --- | --- | --- |
-| RustDDS | `239.255.0.1:7400` SPDP; `7401` según política nativa | `7410` descubrimiento y `7411` datos/control para ID 0 |
+| RustDDS | `239.255.0.1:7400` SPDP; `239.255.0.1:7401` socket de recepción de datos multicast nativo | `7410` descubrimiento y `7411` datos/control para ID 0 |
 | OpenDDS | `239.255.0.1:7400` SPDP | `7410` SPDP, `7412` SEDP, `7411` datos/control |
 | Fuente NMEA opcional | No utiliza multicast | `127.0.0.1:3100` predeterminado, solo publicador |
 | Probe de diagnóstico | No utiliza multicast | `17400`, prueba UDP con respuesta |
 
-RustDDS usa puertos nominales `7410 + 2 × ID` y `7411 + 2 × ID`; el puerto de datos puede ser dinámico si está ocupado. Mantener un participante por MV, ID 0, y cerrar otras aplicaciones del dominio. `--expected-id` comprueba el ID, no lo asigna. OpenDDS admite puertos personalizados; ajustar firewall y capturas si se cambian.
+RustDDS **0.14.3** usa puertos nominales `7410 + 2 × ID` y `7411 + 2 × ID`; el puerto de datos puede ser dinámico si está ocupado. Mantener un participante por MV, ID 0, y cerrar otras aplicaciones del dominio. `--expected-id` comprueba el ID, no lo asigna. OpenDDS admite puertos personalizados; ajustar firewall y capturas si se cambian.
 
 OpenDDS usa multicast para SPDP y unicast para SEDP/datos, con gestión automática de interfaces. Ambos demos arrancan sin IP local; consultar direcciones sigue siendo útil para diagnóstico y firewall. Varias interfaces o VPN pueden afectar las rutas elegidas. RustDDS conserva la política nativa de la biblioteca, sin selección de interfaz, peers ni puente auxiliar. Ambos necesitan descubrimiento y control de retorno; recibir un anuncio multicast por sí solo no demuestra entrega DDS.
 
