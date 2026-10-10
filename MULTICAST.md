@@ -36,7 +36,7 @@ En la otra MV los valores local/remoto se intercambian. Son variables auxiliares
 
 RustDDS usa puertos nominales `7410 + 2 × ID` y `7411 + 2 × ID`; el puerto de datos puede ser dinámico si está ocupado. Mantener un participante por MV, ID 0, y cerrar otras aplicaciones del dominio. `--expected-id` comprueba el ID, no lo asigna. OpenDDS admite puertos personalizados; ajustar firewall y capturas si se cambian.
 
-OpenDDS usa multicast para SPDP y unicast para SEDP/datos. RustDDS conserva la política nativa de la biblioteca, sin selección de interfaz, peers ni puente auxiliar. Ambos necesitan descubrimiento y control de retorno; recibir un anuncio multicast por sí solo no demuestra entrega DDS.
+OpenDDS usa multicast para SPDP y unicast para SEDP/datos, con gestión automática de interfaces. Ambos demos arrancan sin IP local; consultar direcciones sigue siendo útil para diagnóstico y firewall. Varias interfaces o VPN pueden afectar las rutas elegidas. RustDDS conserva la política nativa de la biblioteca, sin selección de interfaz, peers ni puente auxiliar. Ambos necesitan descubrimiento y control de retorno; recibir un anuncio multicast por sí solo no demuestra entrega DDS.
 
 ## 3. Firewall Ubuntu
 
@@ -81,13 +81,21 @@ Si UFW está activo, permitir antes UDP 17400 desde la otra MV en ambas máquina
 Con un participante ejecutándose, desde la raíz del repositorio en cualquiera de las MV:
 
 ```bash
-# RustDDS:
-python3 tools/capture_spdp.py --local "$DEMO_LOCAL_IP" --seconds 15 --rustdds-native
-# OpenDDS, en una prueba separada:
+# RustDDS u OpenDDS, ejecutados por separado:
 python3 tools/capture_spdp.py --local "$DEMO_LOCAL_IP" --seconds 15
 ```
 
-`--local` selecciona dónde escucha el observador; no configura RustDDS. El modo nativo registra TTL, interfaces e IP anunciadas sin exigir un único locator. El modo OpenDDS comprueba TTL 1 y la IP seleccionada. OpenDDS puede anunciar locators ficticios `127.0.0.1:12345` en SPDP: los de datos reales se intercambian por SEDP.
+`--local` selecciona la interfaz de observación y filtra anuncios cuyo origen sea esa IP; no configura DDS. El observador muestra interfaz de recepción, TTL real y todas las direcciones anunciadas, aunque sean varias o no incluyan la IP observada. El TTL indica el límite de saltos del paquete, no hasta dónde llegó. OpenDDS puede anunciar locators ficticios `127.0.0.1:12345` en SPDP: también se muestran, pero los destinos reales de datos se intercambian por SEDP. La herramienta no certifica que las direcciones anunciadas sean accesibles, no reenvía paquetes ni realiza el descubrimiento por cuenta propia.
+
+Resultado esperado: líneas JSON con los anuncios y un contador final. Si no se observa SPDP local en la ventana, termina con error. La opción antigua `--rustdds-native` sigue aceptándose como alias sin efecto; el comportamiento es común para ambos DDS.
+
+Para comprobar el observador sin red real, desde la raíz:
+
+```bash
+python3 -m unittest discover -s tools/tests -p 'test_capture_spdp.py'
+```
+
+Este test usa paquetes simulados; no inicia participantes DDS ni comprueba comunicación entre MV.
 
 Para comprobar los paquetes en la interfaz real, instalar `tcpdump` si hace falta y capturar mientras ambos procesos están activos:
 
@@ -105,7 +113,7 @@ Resultado esperado: anuncios SPDP y tráfico unicast con la otra MV. Una observa
 | --- | --- |
 | Sin descubrimiento/asociación | Bridged, adaptador físico seleccionado, IP/rutas, multicast 7400 y firewall de ambas MV |
 | Asociación sin muestras | Fuente sintética, errores de escritura, datos/control y tráfico de retorno |
-| OpenDDS rechaza `--local` | La IP debe pertenecer a una interfaz local activa con multicast |
+| OpenDDS rechaza `--local` | Retirar la opción: la interfaz se gestiona automáticamente |
 | RustDDS informa ID inesperado | Cerrar otros participantes; no usar `--expected-id` para seleccionar una interfaz |
 | Puerto ocupado | `ss -lunp`, cerrar procesos anteriores o revisar opciones de puertos OpenDDS |
 | Biblioteca OpenDDS ausente | Instalación compilada, `MARINE_DDS_ROOT`, entorno y `ldd` |

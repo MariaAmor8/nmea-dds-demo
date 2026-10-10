@@ -9,7 +9,7 @@ import time
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--local', required=True, help='IPv4 of the observation interface; does not configure DDS')
 p.add_argument('--seconds', type=float, default=15)
-p.add_argument('--rustdds-native', action='store_true', help='Observe original RustDDS: report TTL and allow multiple advertised IPs')
+p.add_argument('--rustdds-native', action='store_true', help='Alias compatible sin efecto adicional; ya no es necesario para ninguno de los DDS')
 a = p.parse_args()
 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as rx:
     rx.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -70,17 +70,6 @@ with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as rx:
             continue
         print(json.dumps({'source': source, 'group': '239.255.0.1', 'port': 7400,
                           'ttl': ttl, 'interface': interface, 'guid_prefix': data[8:20].hex(), 'locators': locators}), flush=True)
-        if not a.rustdds_native and ttl != 1:
-            raise SystemExit('Expected TTL=1')
-        if not any(x['pid'] == '0x32' and x['ip'] == a.local for x in locators):
-            raise SystemExit('Selected local address missing from SPDP locators')
-        # OpenDDS 3.34 Spdp::build_local_pdata uses dummy default data locators;
-        # real publication/subscription transport locators are sent via SEDP.
-        effective = [x for x in locators if not (data[6:8] == b'\x01\x03'
-                     and x['pid'] in ('0x31', '0x48')
-                     and x['ip'] == '127.0.0.1' and x['port'] == 12345)]
-        if not a.rustdds_native and any(x['ip'] not in (a.local, '239.255.0.1') for x in effective):
-            raise SystemExit('Unrelated address advertised in SPDP locators')
         observed += 1
     if not observed:
         raise SystemExit('No local SPDP observed')

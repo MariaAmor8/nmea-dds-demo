@@ -74,11 +74,11 @@ export MARINE_DDS_BUILD_DIR="opendds/build-release"
 bash opendds/scripts/build.sh --build-dir "$MARINE_DDS_BUILD_DIR" --build-type Release --jobs 4 --integration-tests
 ```
 
-Resultado esperado: compilación y tests `sources`, `cdr`, `multicast` aprobados. La integración verifica entrega y reasociación entre procesos locales y entrada NMEA; necesita sockets funcionales y no valida las dos MV. Ejecutarla sin otros demos activos. Un build posterior sin `--integration-tests` deshabilita esa prueba.
+Resultado esperado: compilación y tests `sources`, `cdr`, `multicast` aprobados. CTest ejecuta `opendds/tests/integration.py`, que arranca los ejecutables y revisa sus logs; las muestras DDS no pasan por el script. La integración verifica entrega y reasociación entre procesos locales y entrada NMEA; necesita sockets funcionales y no valida las dos MV. Ejecutarla sin otros demos activos. Un build posterior sin `--integration-tests` deshabilita esa prueba.
 
 Las rutas relativas se resuelven desde la raíz del repositorio. Para ejecutar un build personalizado, definir `MARINE_DDS_BUILD_DIR` con la misma ruta; `--build-dir` no exporta esa variable. Al cambiar instalación o generador CMake, usar un directorio de build nuevo.
 
-## 4. Preparar red e IP local (ambas MV)
+## 4. Preparar red (ambas MV)
 
 Seguir [pasos 1–3 de MULTICAST.md](../MULTICAST.md): VMware Bridged y selección explícita del adaptador físico de Internet. En cada MV comprobar:
 
@@ -86,10 +86,9 @@ Seguir [pasos 1–3 de MULTICAST.md](../MULTICAST.md): VMware Bridged y selecci�
 ip -br -4 addr
 ip route
 ip link
-export DEMO_LOCAL_IP="192.168.10.15"  # sustituir por la IPv4 de ESTA MV
 ```
 
-En la otra MV usar su propia IP, distinta. `--local` es obligatorio y debe pertenecer a una interfaz activa con multicast. No es la dirección del otro extremo. No se configura una IP remota.
+Cada MV necesita una dirección distinta y conectividad multicast. Las IP se consultan para diagnóstico y firewall; no se pasan al demo. OpenDDS y el sistema gestionan las interfaces automáticamente. La opción antigua `--local IP` se rechaza. Varias interfaces, VPN o rutas inadecuadas pueden impedir conectividad.
 
 | Protocolo/puerto local | Función |
 | --- | --- |
@@ -99,24 +98,24 @@ En la otra MV usar su propia IP, distinta. `--local` es obligatorio y debe perte
 | UDP `7411` | Datos RTPS y control/confirmaciones |
 | UDP `127.0.0.1:3100` | NMEA opcional, solo publicador |
 
-La aplicación crea y elimina un INI temporal: selecciona interfaz por `--local`, usa SPDP multicast y SEDP/datos unicast. No necesita DCPSInfoRepo ni auxiliar Python. Aplicar las reglas UFW de la guía de red en ambas MV si el firewall está activo; Reliable requiere retorno.
+La aplicación crea y elimina un INI temporal: deja la interfaz multicast sin selección explícita y escucha SPDP, SEDP y datos en `0.0.0.0:PUERTO`, usa SPDP multicast y SEDP/datos unicast. `0.0.0.0` significa escucha general; no es una IP remota ni se anuncia como dirección de destino. No necesita DCPSInfoRepo ni auxiliar Python. Aplicar las reglas UFW de la guía de red en ambas MV si el firewall está activo; Reliable requiere retorno.
 
 ## 5. Ejecutar la fuente sintética
 
-Primero, **MV B suscriptora**, con entorno e IP definidos en esa terminal:
+Primero, **MV B suscriptora**, con el entorno definido en esa terminal:
 
 ```bash
 cd "$HOME/projects/nmea-dds-demo"
-bash run.sh opendds subscriber --local "$DEMO_LOCAL_IP"
+bash run.sh opendds subscriber
 ```
 
-Resultado esperado: descripción de dominio/tópico, línea `SPDP multicast 239.255.0.1:7400 TTL=1` con interfaz y dirección de esa MV, y `Suscriptor listo. Esperando MarineNavigation. Ctrl+C para terminar.`
+Resultado esperado: descripción de dominio/tópico, línea `SPDP multicast 239.255.0.1:7400 TTL=1` con el mensaje `interfaces automaticas (OpenDDS/sistema)` y los puertos, y `Suscriptor listo. Esperando MarineNavigation. Ctrl+C para terminar.`
 
-Después, **MV A publicadora**, con su propio entorno e IP:
+Después, **MV A publicadora**, con su propio entorno:
 
 ```bash
 cd "$HOME/projects/nmea-dds-demo"
-bash run.sh opendds publisher --local "$DEMO_LOCAL_IP" --source synthetic
+bash run.sh opendds publisher --source synthetic
 ```
 
 Resultado esperado: `Publicador listo. Fuente: synthetic. Ctrl+C para terminar.`, muestras aproximadamente a 1 Hz y asociación:
@@ -135,7 +134,7 @@ PARSEADO: seq=12 timestamp_ms=1791637200000 lat=10.00012 lon=-75.00012 speed=5.2
 
 El publicador imprime `PUBLICADO DDS:` seguido del mismo resumen de campos. El texto NMEA está vacío en modo sintético. Publicar confirma aceptación local; recibir en la otra MV confirma entrega. La primera secuencia puede ser mayor que uno por el tiempo de asociación y la durabilidad Volatile; los saltos posteriores aparecen como `SALTO secuencia`.
 
-Esperar hasta 30 segundos antes de diagnosticar asociación. Para una comprobación nueva, observar un minuto; esta duración no fue confirmada en la prueba reportada. Detener ambos procesos con Ctrl+C e **invertir roles**: subscriber en MV A, publisher en MV B, conservando siempre la IP local de cada una. El usuario reportó recepción sintética exitosa en ambos sentidos.
+Esperar hasta 30 segundos antes de diagnosticar asociación. Para una comprobación nueva, observar un minuto; esta duración no fue confirmada en la prueba reportada. Detener ambos procesos con Ctrl+C e **invertir roles**: subscriber en MV A, publisher en MV B, sin proporcionar IP en ninguno de los comandos. El usuario reportó recepción sintética exitosa en ambos sentidos con la configuración anterior de IP explícita. La aceptación entre MV del nuevo modo automático está pendiente.
 
 ## 6. Opciones de ejecución y NMEA
 
@@ -143,14 +142,13 @@ Esperar hasta 30 segundos antes de diagnosticar asociación. Para una comprobaci
 bash run.sh opendds publisher --help
 bash run.sh opendds subscriber --help
 # Ejecución sintética limitada, en la MV publicadora:
-bash run.sh opendds publisher --local "$DEMO_LOCAL_IP" --source synthetic --duration 65
+bash run.sh opendds publisher --source synthetic --duration 65
 ```
 
 El último comando termina automáticamente tras unos 65 segundos de su bucle de ejecución con `Publicador terminado.`; no cierra el suscriptor remoto.
 
 | Opción | Predeterminado | Función |
 | --- | --- | --- |
-| `--local IP` | Obligatoria | IPv4 de la interfaz local |
 | `--duration SEGUNDOS` | `0` | `0`: hasta Ctrl+C; `1–86400`: duración del bucle, ambos roles |
 | `--debug NIVEL` | `0` | Depuración OpenDDS, `0–10`, ambos roles |
 | `--spdp-port N` | `7410` | Puerto SPDP unicast local |
@@ -174,4 +172,6 @@ source "$MARINE_DDS_ROOT/setenv.sh"
 ldd "${MARINE_DDS_BUILD_DIR:-opendds/build-linux}/publisher"
 ```
 
-Resultado esperado: puertos locales del rol activo y ninguna biblioteca `not found`. Si faltan bibliotecas, revisar instalación y entorno; si se rechaza la IP, verificar que sea de esa MV y tenga multicast. Sin asociación, revisar SPDP/SEDP, Bridged y firewall. Con asociación sin muestras, revisar fuente, errores de escritura y retorno. Guardar salidas de ambas consolas en `logs/`.
+Resultado esperado: puertos locales del rol activo y ninguna biblioteca `not found`. Si faltan bibliotecas, revisar instalación y entorno; si se rechaza `--local`, retirar esa opción del comando. Sin asociación, revisar SPDP/SEDP, Bridged y firewall. Con asociación sin muestras, revisar fuente, errores de escritura y retorno. Guardar salidas de ambas consolas en `logs/`.
+
+Para la función y el momento de ejecución de todos los scripts, consultar la [tabla de scripts Python](../README.md#scripts-python-y-momento-de-ejecución). `tools/udp_probe.py` y `tools/capture_spdp.py` son diagnósticos manuales opcionales descritos en [MULTICAST.md](../MULTICAST.md). `tools/tests/test_capture_spdp.py` prueba el observador con paquetes simulados, sin iniciar DDS. `tools/idl_to_rust.py` pertenece exclusivamente a la compilación Rust; OpenDDS genera sus tipos con sus propias herramientas.

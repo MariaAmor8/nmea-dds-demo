@@ -27,8 +27,7 @@ class Harness:
     def start(self, role, name, duration=0, extra=()):
         base = 17410 if role == 'publisher' else 17510
         suffix = '.exe' if os.name == 'nt' else ''
-        command = [str(self.binaries / (role + suffix)), '--local', os.environ['MARINE_TEST_LOCAL'],
-                   '--spdp-port', str(base),
+        command = [str(self.binaries / (role + suffix)), '--spdp-port', str(base),
                    '--sedp-port', str(base + 2), '--data-port', str(base + 1),
                    '--duration', str(duration), *extra]
         path = self.logs / (name + '.log')
@@ -127,7 +126,7 @@ def run(h):
     require('heading=N/D depth=N/D position_valid=true heading_valid=false depth_valid=false simulated=false' in sublog.read_text(), 'NMEA flags changed')
     print('NMEA multiline / raw line / flags passed', flush=True)
 
-    # Occupied NMEA port and malformed/local non-existent IP must fail.
+    # Occupied NMEA port and retired interface selection must fail.
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as occupied:
         if os.name == 'nt':
             occupied.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
@@ -135,13 +134,13 @@ def run(h):
         publisher, path = h.start('publisher', 'occupied-nmea', 3, ('--source', 'nmea', '--nmea-listen', '127.0.0.1:17300'))
         require(publisher.wait(timeout=15) != 0, 'occupied NMEA port accepted')
         require('no se pudo abrir NMEA UDP' in path.read_text(errors='replace'), 'wrong occupied port error')
-    for ip in ('999.1.1.1', '192.0.2.123'):
-        publisher, _ = h.start('publisher', 'invalid-ip-' + ip, 2, ('--local', ip))
-        require(publisher.wait(timeout=15) != 0, 'invalid local IP accepted')
+    publisher, path = h.start('publisher', 'retired-local', 2, ('--local', '127.0.0.1'))
+    require(publisher.wait(timeout=15) != 0, 'retired --local accepted')
+    require('opcion desconocida: --local' in path.read_text(errors='replace'), 'wrong retired option error')
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as occupied:
         if os.name == 'nt':
             occupied.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-        occupied.bind((os.environ['MARINE_TEST_LOCAL'], 17410))
+        occupied.bind(('0.0.0.0', 17410))
         publisher, _ = h.start('publisher', 'occupied-spdp', 2)
         require(publisher.wait(timeout=15) != 0, 'occupied SPDP port accepted')
     # Prove UDP ports are reusable after both finite duration and signal shutdown.
@@ -149,18 +148,14 @@ def run(h):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
             if os.name == 'nt':
                 probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-            probe.bind(('127.0.0.1' if port == 17300 else os.environ['MARINE_TEST_LOCAL'], port))
+            probe.bind(('127.0.0.1' if port == 17300 else '0.0.0.0', port))
     print('failure modes / port reuse passed', flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--bin-dir', required=True, type=Path)
-    parser.add_argument('--local', default=os.environ.get('MARINE_TEST_LOCAL'), help='IPv4 de interfaz activa con multicast')
     args = parser.parse_args()
-    if not args.local:
-        parser.error('--local o MARINE_TEST_LOCAL es obligatorio')
-    os.environ['MARINE_TEST_LOCAL'] = args.local
     logs = Path(tempfile.mkdtemp(prefix='marine-opendds-tests-'))
     print('Logs:', logs, flush=True)
     h = Harness(args.bin_dir.resolve(), logs)

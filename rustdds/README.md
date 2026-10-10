@@ -25,7 +25,7 @@ python3 --version
 cc --version
 ```
 
-Resultado esperado: todas las herramientas imprimen su versión. Si Cargo no se encuentra, cargar `"$HOME/.cargo/env"` en esa terminal. Python genera los tipos desde el IDL durante la compilación; no es opcional. Cargo.lock fija dependencias y los comandos usan `--locked`.
+Resultado esperado: todas las herramientas imprimen su versión. Si Cargo no se encuentra, cargar `"$HOME/.cargo/env"` en esa terminal. `rustdds/build.rs` ejecuta automáticamente `tools/idl_to_rust.py` para generar los tipos desde el IDL durante la compilación cuando corresponde; Python no es opcional. Cargo.lock fija dependencias y los comandos usan `--locked`.
 
 ## 2. Preparar la red (ambas MV)
 
@@ -56,7 +56,7 @@ Opcionalmente, sin otros demos activos:
 python3 rustdds/tests/multicast.py
 ```
 
-La integración local verifica asociación, ambos órdenes de inicio, entrega, reasociación y NMEA válido/inválido. Debe terminar con código cero. Ejecuta procesos en la misma MV y no valida la red entre MV.
+`rustdds/tests/multicast.py` arranca los ejecutables y revisa sus logs; las muestras DDS no pasan por el script. La integración local verifica asociación, ambos órdenes de inicio, entrega, reasociación y NMEA válido/inválido. Debe terminar con código cero. Ejecuta procesos en la misma MV y no valida la red entre MV.
 
 ## 4. Ejecutar la fuente sintética
 
@@ -115,4 +115,6 @@ NMEA es una capacidad disponible, **no validada entre las MV en la prueba report
 
 ## 6. Diagnóstico
 
-Sin recepción, revisar [diagnóstico por síntoma](../MULTICAST.md). Si el ID es inesperado, cerrar otros demos de dominio 0; ambos DDS deben ejecutarse por separado. Revisar interfaces y locators mediante el observador en modo `--rustdds-native`: el demo no limita una interfaz. Usar `ss -lunp` para puertos y guardar ambas consolas. Una asociación sin datos requiere revisar errores de publicación y tráfico de retorno, no solo SPDP.
+Sin recepción, revisar [diagnóstico por síntoma](../MULTICAST.md). Si el ID es inesperado, cerrar otros demos de dominio 0; ambos DDS deben ejecutarse por separado. Revisar interfaces y locators mediante el observador común a ambos DDS: el demo no limita una interfaz. Usar `ss -lunp` para puertos y guardar ambas consolas. Una asociación sin datos requiere revisar errores de publicación y tráfico de retorno, no solo SPDP.
+
+Para la función y el momento de ejecución de todos los scripts, consultar la [tabla de scripts Python](../README.md#scripts-python-y-momento-de-ejecución). `tools/udp_probe.py` y `tools/capture_spdp.py` se ejecutan manualmente para diagnóstico según [MULTICAST.md](../MULTICAST.md); `tools/tests/test_capture_spdp.py` prueba el observador con paquetes simulados, fuera del flujo de muestras.

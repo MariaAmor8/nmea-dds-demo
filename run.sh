@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")"
-if [[ $# -lt 2 ]]; then echo "Uso: bash run.sh rustdds publisher|subscriber [opciones]; bash run.sh opendds publisher|subscriber --local IP [opciones]"; exit 2; fi
+if [[ $# -lt 2 ]]; then echo "Uso: bash run.sh rustdds publisher|subscriber [opciones]; bash run.sh opendds publisher|subscriber [opciones]"; exit 2; fi
 dds="$1"
 role="$2"
 shift 2
